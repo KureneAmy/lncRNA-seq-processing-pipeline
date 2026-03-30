@@ -1,0 +1,153 @@
+# config.yaml
+# Please use ABSOLUTE paths and avoid adding "/" at the end of file folder's path
+
+
+# --- 1. Experimental Design ---
+# ERCC spike-in controls (optional)
+# If you have ERCC spike-ins, set to true and provide the path to other necessary files
+# If not using ERCC, set to false and other fields will be ignored
+ercc:
+  use_ercc: true
+  ercc_fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92.fa"
+  ercc_gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92.gtf"
+  ercc_conc: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92_conc.txt"
+  ercc_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_ercc_index"
+  ercc_analysis_script: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/ercc_analysis.R"
+
+ercc_params:
+  # Specify the path to the ERCC spike-in database
+  dilution: 100
+  ercc_ul: 2
+  rna_pg_per_cell: 30
+  total_rna_ug: 1
+
+# Scripts essential for whole pipeline (paths should be ABSOLUTE)
+scripts:
+  # R script for differential expression analysis and GO enrichment
+  rna_analysis: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/rna_seq_analysis.R"
+  # R script for lncRNA downstream analysis
+  lncRNA_analysis: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/lncRNA_analysis.R"
+  # If using ERCC, provide the R script for ERCC analysis in Expermental Design section
+
+
+# --- 2. Run Parameters ---
+# Path to the Singularity container (lncRNAseq.sif)
+# Use ABSOLUTE path
+container: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/lncRNAseq.sif"
+
+# Output directory for all results
+# Use ABSOLUTE path
+output_dir: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/Output"
+
+# --- 3. Samples ---
+# Sample information with paths to FASTQ files
+# For single-end data: omit "R2" field
+# For paired-end data: include both "R1" and "R2" fields
+# Use ABSOLUTE paths for all FASTQ files
+# 
+# The "condition" field should match your experimental groups
+# and will be used in differential expression analysis
+samples:
+  SRR7685881_control_Rep2:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685881_control_Rep2.fastq.gz"
+    condition: "Control"
+  
+  SRR7685880_control_Rep1:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685880_control_Rep1.fastq.gz"
+    condition: "Control"
+    
+  SRR7685879_treated_Rep2:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685879_treated_Rep2.fastq.gz"
+    condition: "Treated"
+
+  SRR7685878_treated_Rep1:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685878_treated_Rep1.fastq.gz"
+    condition: "Treated"
+    
+# Remember to keep the file name same with the sample name.
+# Example for single-end data:
+#  Sample_SE:
+#    R1: "/path/to/data/Sample_SE.fastq.gz"
+#    condition: "Control"/...
+#
+# Example for paired-end data:
+#  Sample_PE:
+#    R1: "/path/to/data/Sample_PE_R1.fastq.gz"
+#    R2: "/path/to/data/Sample_PE_R2.fastq.gz"
+#    condition: "Control"/...
+
+
+# --- 4. Reference Files ---
+# All paths should be ABSOLUTE paths
+# See README.md for instructions on preparing reference files
+ref:
+  # GTF annotation file
+  gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/gencode.vM38.primary_assembly.annotation.gtf"
+  
+  # Genome FASTA file
+  fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/GRCm39.primary_assembly.genome.fa"
+  
+  # STAR rRNA index
+  # Used for removing ribosomal RNA reads
+  rrna_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_rrna_index"
+  
+  # STAR genome index
+  star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_genome_index"
+  
+  # RSEM reference prefix
+  # This should be the directory containing the RSEM reference files
+  # The actual reference name should be 'rsem_ref'
+  rsem_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/rsem_index"
+
+
+# --- 5. Analysis Parameters ---
+# Number of CPU threads to use for parallel processing
+# Recommended: 8 cores
+threads: 8
+
+params:
+  # Adapter sequence for Trim Galore.
+  # Set to "" (empty string) to use auto-detection.
+  trim_galore_adapter_sequence: ""
+  # --- Align Mode Parameters ---
+  # featureCounts strand specificity:
+  #   0: unstranded
+  #   1: stranded (first-strand)
+  #   2: reversely stranded (second-strand, most common for Illumina dUTP methods)
+  # Default: 2 (reversely stranded)
+  featurecounts_strandedness: 2
+  
+
+# --- 6. Differential Expression Analysis Settings ---
+analysis:
+  # Contrast for differential expression analysis
+  # Format: [treatment_group, control_group]
+  # The first group will be compared against the second (control)
+  # These names must match the "condition" values in the samples section
+  contrast: ["Treated", "Control"]
+  
+  # FDR (False Discovery Rate) threshold for significance
+  # Genes with adjusted p-value < fdr_threshold are considered significant
+  fdr_threshold: 0.05
+  
+  # Log2 fold change threshold for filtering
+  # Genes with |log2FoldChange| > lfc_threshold are considered differentially expressed
+  lfc_threshold: 1
+  
+  # Annotation database for GO enrichment analysis
+  # For human: "org.Hs.eg.db"
+  # For mouse: "org.Mm.eg.db"
+  # For other species, see Bioconductor annotation packages
+  r_annotation_db: "org.Mm.eg.db"
+  
+  # Organism name for GO enrichment
+  # For human: "hsa"
+  # For mouse: "mmu"
+  organism: "mmu"
+  
+  # Whether to perform DESeq2 analysis and the downstream lncRNA-seq analysis
+  # If you don't have at least 2 replicated samples for each group, deseq2 should be set to false.
+  # If replicated samples are available, you can set to true to perform DESeq2 and GSEA analyses, etc.
+  deseq2: true
+
+
