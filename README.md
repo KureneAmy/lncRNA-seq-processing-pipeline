@@ -255,4 +255,5 @@ Here stands an throughout workflow of data analysis.
 # Part V Reference
 
 [1] Schertzer, M. D., Murvin, M. M. and Calabrese, J. M. (2020). Using RNA Sequencing and Spike-in RNAs to Measure Intracellular Abundance of lncRNAs and mRNAs. Bio-protocol 10(19): e3772.
+
 [2] Bora, F. E. (2026). lncRNA Analysis Pipeline (Version 1.0.0) [Computer software]. https://github.com/Cingoz-Lab/lncRNA-Analysis
