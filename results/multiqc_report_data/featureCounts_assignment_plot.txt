@@ -1,0 +1,7 @@
+Sample	Assigned	Unassigned: No Features	Unassigned: Ambiguity
+SRR7685878_treated_Rep1.unique	10029.0	7593.0	284.0
+SRR7685879_treated.unique	217.0	18502.0	0.0
+SRR7685879_treated_Rep2.unique	9982.0	8436.0	301.0
+SRR7685880_control_Rep1.unique	10233.0	7578.0	280.0
+SRR7685881_control.unique	173.0	18548.0	0.0
+SRR7685881_control_Rep2.unique	10035.0	8367.0	319.0

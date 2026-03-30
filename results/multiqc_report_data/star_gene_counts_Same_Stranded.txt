@@ -1,0 +1,7 @@
+Sample	Overlapping Genes	No Feature	Ambiguous Features	Unmapped
+SRR7685878_treated_Rep1	736.0	17903.0	15.0	4918.0
+SRR7685879_treated	787.0	18704.0	15.0	4071.0
+SRR7685879_treated_Rep2	787.0	18704.0	15.0	4071.0
+SRR7685880_control_Rep1	789.0	18039.0	12.0	4735.0
+SRR7685881_control	798.0	18659.0	11.0	4108.0
+SRR7685881_control_Rep2	798.0	18659.0	11.0	4108.0

@@ -1,0 +1,6 @@
+10.1093/bioinformatics/btw354                      # MultiQC
+10.1186/1471-2105-12-323                           # rsem
+10.1093/bioinformatics/btt656                      # featurecounts
+10.1093/bioinformatics/bts635                      # star
+10.14806/ej.17.1.200                               # cutadapt
+

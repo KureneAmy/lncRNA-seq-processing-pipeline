@@ -1,0 +1,7 @@
+Sample	Aligned uniquely to a gene	Aligned to multiple genes	Filtered due to too many alignments	Unalignable reads
+SRR7685878_treated_Rep1	9302.0	439.0	0.0	0.0
+SRR7685879_treated	9282.0	487.0	0.0	0.0
+SRR7685879_treated_Rep2	9282.0	487.0	0.0	0.0
+SRR7685880_control_Rep1	9328.0	469.0	0.0	0.0
+SRR7685881_control	9377.0	502.0	0.0	0.0
+SRR7685881_control_Rep2	9377.0	502.0	0.0	0.0

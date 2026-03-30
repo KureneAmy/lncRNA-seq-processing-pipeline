@@ -1,0 +1,9 @@
+Sample	Reads passing filters
+SRR7685878_treated_Rep1	23587.0
+SRR7685879_treated	23587.0
+SRR7685879_treated_R1	23587.0
+SRR7685879_treated_Rep2	23587.0
+SRR7685880_control_Rep1	23587.0
+SRR7685881_control	23587.0
+SRR7685881_control_R1	23587.0
+SRR7685881_control_Rep2	23587.0

@@ -1,0 +1,7 @@
+Sample	Total	Assigned	Unassigned_Unmapped	Unassigned_Read_Type	Unassigned_Singleton	Unassigned_MappingQuality	Unassigned_Chimera	Unassigned_FragmentLength	Unassigned_Duplicate	Unassigned_MultiMapping	Unassigned_Secondary	Unassigned_NonSplit	Unassigned_NoFeatures	Unassigned_Overlapping_Length	Unassigned_Ambiguity	percent_assigned
+SRR7685878_treated_Rep1.unique	17906	10029	0	0	0	0	0	0	0	0	0	0	7593	0	284	56.00915894113705
+SRR7685879_treated.unique	18719	217	0	0	0	0	0	0	0	0	0	0	18502	0	0	1.1592499599337571
+SRR7685879_treated_Rep2.unique	18719	9982	0	0	0	0	0	0	0	0	0	0	8436	0	301	53.32549815695283
+SRR7685880_control_Rep1.unique	18091	10233	0	0	0	0	0	0	0	0	0	0	7578	0	280	56.5640373666464
+SRR7685881_control.unique	18721	173	0	0	0	0	0	0	0	0	0	0	18548	0	0	0.9240959350462048
+SRR7685881_control_Rep2.unique	18721	10035	0	0	0	0	0	0	0	0	0	0	8367	0	319	53.602905827680146
