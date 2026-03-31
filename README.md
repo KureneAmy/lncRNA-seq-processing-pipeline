@@ -15,7 +15,7 @@ flowchart TD
     E --> F[BAM processing<br/>samtools sort / index / filter]
     F --> G[Gene / transcript quantification<br/>featureCounts / RSEM]
     G --> H[RNA downstream analysis<br/>count matrix / GO enrichment]
-    H --> I[lncRNA downstream analysis<br/>filtering / annotation / DEG / plotting]
+    H -.-> I[lncRNA downstream analysis<br/>filtering / annotation / DEG / plotting]
     G -. optional .-> J[ERCC quantification]
     J -.-> H
 
@@ -24,15 +24,19 @@ flowchart TD
     classDef align fill:#E6F7EA,stroke:#2E8B57,stroke-width:3px,color:#155B33;
     classDef quant fill:#F3E8FF,stroke:#8A4FD6,stroke-width:3px,color:#4A227A;
     classDef downstream fill:#f5d7ec,stroke:#d149a7,stroke-width:3px,color:#d65db1;
+    classDef lncRNA fill:#f5d7ec,stroke:#d149a7,stroke-width:3px,stroke-dasharray: 5 3,color:#d65db1;
     classDef optional fill:#F2F2F2,stroke:#888888,stroke-width:3px,stroke-dasharray: 5 3,color:#444444;
 
     class A,C input;
     class B,D qc;
     class E,F align;
     class G quant;
-    class H,I downstream;
+    class H downstream;
+    class I lncRNA;
     class J optional;
 ```
+
+This workflow is compatible with both single-end and paired-end sequencing data inputs. The execution of ERCC-based quantification analysis can be controlled through the configuration file by enabling the corresponding settings and providing the required parameters. In addition, if the experimental groups contain biological replicates, DEG analysis and the lncRNA downstream analysis will be performed automatically; otherwise, these steps will be skipped.
 
 # Part II Requirements
 
