@@ -6,7 +6,33 @@ The analysis pipeline for lncRNA sequencing data processes raw FASTQ files throu
 
 Here stands an throughout workflow of data analysis.
 
-<img width="1731" height="655" alt="workflow" src="https://github.com/user-attachments/assets/placeholder-workflow-image" />
+```mermaid
+flowchart TD
+    A[Raw FASTQ files] --> B[raw FastQC]
+    B --> C[Adapter trimming<br/>Trim Galore]
+    C --> D[FastQC<br/>Trimmed data QC]
+    D --> E[Genome alignment<br/>STAR]
+    E --> F[BAM processing<br/>samtools sort / index / filter]
+    F --> G[Gene / transcript quantification<br/>featureCounts / RSEM]
+    G --> H[RNA downstream analysis<br/>count matrix / GO enrichment]
+    H --> I[lncRNA downstream analysis<br/>filtering / annotation / DEG / plotting]
+    G -. optional .-> J[ERCC quantification]
+    J -.-> H
+
+    classDef input fill:#E8F1FF,stroke:#4A78C2,stroke-width:3px,color:#1F3B73;
+    classDef qc fill:#FFF4D6,stroke:#D6A100,stroke-width:3px,color:#7A5A00;
+    classDef align fill:#E6F7EA,stroke:#2E8B57,stroke-width:3px,color:#155B33;
+    classDef quant fill:#F3E8FF,stroke:#8A4FD6,stroke-width:3px,color:#4A227A;
+    classDef downstream fill:#f5d7ec,stroke:#d149a7,stroke-width:3px,color:#d65db1;
+    classDef optional fill:#F2F2F2,stroke:#888888,stroke-width:3px,stroke-dasharray: 5 3,color:#444444;
+
+    class A,C input;
+    class B,D qc;
+    class E,F align;
+    class G quant;
+    class H,I downstream;
+    class J optional;
+```
 
 # Part II Requirements
 
@@ -97,10 +123,41 @@ Here stands an throughout workflow of data analysis.
    cd reference
 
    # Genome FASTA
-   wget <genome_fasta_url>
+   wget [<genome_fasta_url>](https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M38/GRCm39.primary_assembly.genome.fa.gz)
 
    # Gene annotation file
-   wget <annotation_gtf_url>
+   wget [<annotation_gtf_url>](https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M38/gencode.vM38.primary_assembly.annotation.gtf.gz)
+
+   # Make rRNA data
+   awk '$3=="gene" && (/gene_type "rRNA_pseudogene"/ || /gene_type "rRNA"/) {print $1":"$4"-"$5}' gencode.vM38.primary_assembly.annotation.gtf > rRNA.annotation.txt
+   singularity exec ../lncRNAseq.sif samtools faidx GRCm39.primary_assembly.genome.fa -r rRNA.annotation.txt > GRCm39.primary_assembly.rRNA.fa
+
+   ### Build indices
+   # Genome index
+   singularity exec ../lncRNAseq.sif STAR --runThreadN 8 \
+      --runMode genomeGenerate \
+      --genomeDir ./star_genome_index \
+      --genomeFastaFiles GRCm39.primary_assembly.genome.fa \
+      --sjdbGTFfile gencode.vM38.primary_assembly.annotation.gtf \
+      --sjdbOverhang 149
+   # rRNA index
+   mkdir -p star_rrna_index
+   singularity exec ../lncRNAseq.sif STAR --runThreadN 8 \
+      --runMode genomeGenerate \
+      --genomeDir ./star_rrna_index \
+      --genomeFastaFiles GRCm39.primary_assembly.rRNA.fa
+   # RSEM reference
+   mkdir -p rsem_index
+   singularity exec ../lncRNAseq.sif rsem-prepare-reference --gtf gencode.vM38.primary_assembly.annotation.gtf \
+      --num-threads 8 \
+      GRCm39.primary_assembly.genome.fa \
+      rsem_index/rsem_ref
+   # ERCC index (optional)
+   singularity exec ../lncRNAseq.sif STAR --runThreadN 8  \
+      --runMode genomeGenerate  \
+      --genomeDir ./star_ercc_index  \
+      --genomeFastaFiles GRCm39.primary_assembly.genome.fa ./ercc/ERCC92.fa \
+      --sjdbGTFfile gencode.vM38.primary_assembly.annotation.gtf ./ercc/ERCC92.gtf
    ```
 
 5. **Data Preparation**: The data run by this pipeline should be organized as paired-end FASTQ files. If your data are stored in the SRA database, they can be downloaded and converted to FASTQ format first.
@@ -141,7 +198,7 @@ Here stands an throughout workflow of data analysis.
    - **config.yaml** — Configuration file containing paths, parameters, and sample information.
      ⚠️ Must be located in the same directory as `lncRNA-seq.smk`.
    - **lncRNA-seq.sif** — Singularity container image with all required software and dependencies pre-installed.
-   - **scripts/** — Auxiliary scripts used in the pipeline, if any.
+   - **scripts/** — Auxiliary scripts used in the pipeline.
 
 # Part III Running
 
@@ -150,29 +207,157 @@ Here stands an throughout workflow of data analysis.
    * **Step 1: Edit `config.yaml`**
 
      ```bash
-     # Please use ABSOLUTE PATH for all file paths
+     # config.yaml
+     # Please use ABSOLUTE paths and avoid adding "/" at the end of file folder's path
+     
+     
+     # --- 1. Experimental Design ---
+     # ERCC spike-in controls (optional)
+     # If you have ERCC spike-ins, set to true and provide the path to other necessary files
+     # If not using ERCC, set to false and other fields will be ignored
+     ercc:
+       use_ercc: true
+       ercc_fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92.fa"
+       ercc_gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92.gtf"
+       ercc_conc: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92_conc.txt"
+       ercc_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_ercc_index"
+       ercc_analysis_script: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/ercc_analysis.R"
+     
+     ercc_params:
+       # Specify the path to the ERCC spike-in database
+       dilution: 100
+       ercc_ul: 2
+       rna_pg_per_cell: 30
+       total_rna_ug: 1
+     
+     # Scripts essential for whole pipeline (paths should be ABSOLUTE)
+     scripts:
+       # R script for differential expression analysis and GO enrichment
+       rna_analysis: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/rna_seq_analysis.R"
+       # R script for lncRNA downstream analysis
+       lncRNA_analysis: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/lncRNA_analysis.R"
+       # If using ERCC, provide the R script for ERCC analysis in Expermental Design section
+     
+     
+     # --- 2. Run Parameters ---
+     # Path to the Singularity container (lncRNAseq.sif)
+     # Use ABSOLUTE path
+     container: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/lncRNAseq.sif"
+     
+     # Output directory for all results
+     # Use ABSOLUTE path
+     output_dir: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/Output"
+     
+     # --- 3. Samples ---
+     # Sample information with paths to FASTQ files
+     # For single-end data: omit "R2" field
+     # For paired-end data: include both "R1" and "R2" fields
+     # Use ABSOLUTE paths for all FASTQ files
+     # 
+     # The "condition" field should match your experimental groups
+     # and will be used in differential expression analysis
      samples:
-       sample1:
-         R1: "/absolute/path/to/data/samples/sample1_1.fastq.gz"
-         R2: "/absolute/path/to/data/samples/sample1_2.fastq.gz"
-       sample2:
-         R1: "/absolute/path/to/data/samples/sample2_1.fastq.gz"
-         R2: "/absolute/path/to/data/samples/sample2_2.fastq.gz"
-
-     # Output directory, no "/" at the end
-     output_dir: "/absolute/path/to/output"
-
-     # Singularity container
-     container: "/absolute/path/to/lncRNA-seq.sif"
-
-     # Reference files
-     reference:
-       genome: "/absolute/path/to/data/reference/genome.fa"
-       annotation: "/absolute/path/to/data/reference/annotation.gtf"
-
-     # Analysis settings
+       SRR7685881_control_Rep2:
+         R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685881_control_Rep2.fastq.gz"
+         condition: "Control"
+       
+       SRR7685880_control_Rep1:
+         R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685880_control_Rep1.fastq.gz"
+         condition: "Control"
+         
+       SRR7685879_treated_Rep2:
+         R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685879_treated_Rep2.fastq.gz"
+         condition: "Treated"
+     
+       SRR7685878_treated_Rep1:
+         R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685878_treated_Rep1.fastq.gz"
+         condition: "Treated"
+         
+     # Remember to keep the file name same with the sample name.
+     # Example for single-end data:
+     #  Sample_SE:
+     #    R1: "/path/to/data/Sample_SE.fastq.gz"
+     #    condition: "Control"/...
+     #
+     # Example for paired-end data:
+     #  Sample_PE:
+     #    R1: "/path/to/data/Sample_PE_R1.fastq.gz"
+     #    R2: "/path/to/data/Sample_PE_R2.fastq.gz"
+     #    condition: "Control"/...
+     
+     
+     # --- 4. Reference Files ---
+     # All paths should be ABSOLUTE paths
+     # See README.md for instructions on preparing reference files
+     ref:
+       # GTF annotation file
+       gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/gencode.vM38.primary_assembly.annotation.gtf"
+       
+       # Genome FASTA file
+       fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/GRCm39.primary_assembly.genome.fa"
+       
+       # STAR rRNA index
+       # Used for removing ribosomal RNA reads
+       rrna_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_rrna_index"
+       
+       # STAR genome index
+       star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_genome_index"
+       
+       # RSEM reference prefix
+       # This should be the directory containing the RSEM reference files
+       # The actual reference name should be 'rsem_ref'
+       rsem_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/rsem_index"
+     
+     
+     # --- 5. Analysis Parameters ---
+     # Number of CPU threads to use for parallel processing
+     # Recommended: 8 cores
      threads: 8
-     overwrite: true
+     
+     params:
+       # Adapter sequence for Trim Galore.
+       # Set to "" (empty string) to use auto-detection.
+       trim_galore_adapter_sequence: ""
+       # --- Align Mode Parameters ---
+       # featureCounts strand specificity:
+       #   0: unstranded
+       #   1: stranded (first-strand)
+       #   2: reversely stranded (second-strand, most common for Illumina dUTP methods)
+       # Default: 2 (reversely stranded)
+       featurecounts_strandedness: 2
+       
+     
+     # --- 6. Differential Expression Analysis Settings ---
+     analysis:
+       # Contrast for differential expression analysis
+       # Format: [treatment_group, control_group]
+       # The first group will be compared against the second (control)
+       # These names must match the "condition" values in the samples section
+       contrast: ["Treated", "Control"]
+       
+       # FDR (False Discovery Rate) threshold for significance
+       # Genes with adjusted p-value < fdr_threshold are considered significant
+       fdr_threshold: 0.05
+       
+       # Log2 fold change threshold for filtering
+       # Genes with |log2FoldChange| > lfc_threshold are considered differentially expressed
+       lfc_threshold: 1
+       
+       # Annotation database for GO enrichment analysis
+       # For human: "org.Hs.eg.db"
+       # For mouse: "org.Mm.eg.db"
+       # For other species, see Bioconductor annotation packages
+       r_annotation_db: "org.Mm.eg.db"
+       
+       # Organism name for GO enrichment
+       # For human: "hsa"
+       # For mouse: "mmu"
+       organism: "mmu"
+       
+       # Whether to perform DESeq2 analysis and the downstream lncRNA-seq analysis
+       # If you don't have at least 2 replicated samples for each group, deseq2 should be set to false.
+       # If replicated samples are available, you can set to true to perform DESeq2 and GSEA analyses, etc.
+       deseq2: true
      ```
 
    * **Step 2: Dry-run and dag-make**
@@ -184,12 +369,12 @@ Here stands an throughout workflow of data analysis.
      snakemake -np \
        -s lncRNA-seq.smk \
        --use-singularity \
-       --singularity-args "--bind /absolute/path/to/root/"
+       --singularity-args "--bind /path/to/root/"
 
      # Dag-make
      snakemake -s lncRNA-seq.smk \
                --use-singularity \
-               --singularity-args "--bind /absolute/path/to/root/" \
+               --singularity-args "--bind /path/to/root/" \
                --dag | \
      dot -Tsvg > dag.svg
      ```
@@ -198,13 +383,13 @@ Here stands an throughout workflow of data analysis.
 
    * **Step 3: Run snakemake**
 
-     Here `/absolute/path/to/root/` represents the root directory.
+     Here `/path/to/root/` represents the root directory.
 
      ```bash
      snakemake -s lncRNA-seq.smk \
        --cores 8 \
        --use-singularity \
-       --singularity-args "--bind /absolute/path/to/root/"
+       --singularity-args "--bind /path/to/root/"
      ```
 
 * **Command Parameters**
