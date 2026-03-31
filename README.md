@@ -501,7 +501,7 @@ This workflow is compatible with both single-end and paired-end sequencing data 
         
         - **Content**: ERCC standard curve showing the relationship between ERCC molecule input and observed RPKM values.
         - **Application**: Used to evaluate ERCC-based absolute quantification performance and the linearity of spike-in measurements.
-        - 
+        
 <img width="1616" height="1032" alt="ERCC_curve" src="https://github.com/user-attachments/assets/46aef50b-8b84-4c22-8f1f-93612d8a9057" />
 
       - **`results/<sample>_mpc.txt`**
