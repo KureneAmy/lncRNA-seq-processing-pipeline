@@ -36,7 +36,7 @@ flowchart TD
     class J optional;
 ```
 
-This workflow is compatible with both single-end and paired-end sequencing data inputs. The execution of ERCC-based quantification analysis can be controlled through the configuration file by enabling the corresponding settings and providing the required parameters. In addition, if the experimental groups contain biological replicates, DEG analysis and the lncRNA downstream analysis will be performed automatically; otherwise, these steps will be skipped.
+This workflow is compatible with both single-end and paired-end sequencing data inputs. The execution of ERCC-based quantification, DEG and the lncRNA downstream analysis can be controlled through the configuration file by enabling the corresponding settings and providing the required parameters. Note that if the experimental groups contain no biological replicates, DEG and the lncRNA downstream analysis should be skipped.
 
 # Part II Requirements
 
