@@ -395,15 +395,17 @@ flowchart TD
 * **Command Parameters**
 
    **edit `config.yaml`**
-   - `samples`:(required) A list describing all input samples, including sample names and raw FASTQ file paths. Each sample entry should contain:
-     - `R1`: path to the Read 1 FASTQ file
-     - `R2`: path to the Read 2 FASTQ file
-   - `output_dir`:(required) Path to the output directory where all results will be saved.
-   - `container`:(required) Path to the Singularity container image containing all required software and dependencies.
-   - `reference.genome`:(required) Path to the reference genome FASTA file.
-   - `reference.annotation`:(required) Path to the gene annotation file in GTF/GFF format.
-   - `threads`:(optional) Number of threads to use. Default: 8.
-   - `overwrite`:(optional) Overwrite existing files in output and temporary folders without warning. Default: false.
+    - `use_ercc`:(required) Whether to enable ERCC spike-in analysis.
+    - `ercc_fasta`:(optional, required if `use_ercc: true`) FASTA file containing ERCC spike-in sequences.
+    - `ercc_gtf`:(optional, required if `use_ercc: true`) GTF annotation file for ERCC spike-ins.
+    - `ercc_conc`:(optional, required if `use_ercc: true`) ERCC concentration reference table used for absolute quantification.
+    - `ercc_star_index`:(optional, required if `use_ercc: true`) STAR index built from ERCC reference sequences, used to estimate ERCC read counts.
+    - `ercc_analysis_script`:(optional, required if `use_ercc: true`) Path to `ercc_analysis.R`, which performs absolute RNA quantification based on ERCC spike-ins.
+    - `dilution`:(required if `use_ercc: true`) Dilution factor of the ERCC mix used in library preparation.
+    - `ercc_ul`:(required if `use_ercc: true`) Volume of diluted ERCC mix added to each sample, in µL.
+    - `rna_pg_per_cell`:(required if `use_ercc: true`) Estimated total RNA mass per cell for the biological system, in picograms.
+    - `total_rna_ug`:(required if `use_ercc: true`) Amount of total RNA used for library preparation, in micrograms.
+
 
    **run snakemake**
    - `--use-singularity`: Enables execution of rules within a Singularity container to ensure a fully reproducible environment.
