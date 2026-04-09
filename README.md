@@ -43,7 +43,7 @@ This workflow is compatible with both single-end and paired-end sequencing data 
 1.  **Recommended System Configuration**:
 
       * 8-core CPU
-      * 24 GB RAM
+      * 80 GB RAM
 
 2.  **Singularity**: Must be installed on your system. Below are the detailed steps for installing on an Ubuntu 22.0.4 system. For other operating systems, please refer to the official installation guide: [https://docs.sylabs.io/guides/3.0/user-guide/installation.html](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)
 
