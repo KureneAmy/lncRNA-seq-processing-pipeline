@@ -145,11 +145,8 @@ This workflow is compatible with both single-end and paired-end sequencing data 
       --sjdbGTFfile gencode.vM38.primary_assembly.annotation.gtf \
       --sjdbOverhang 149
    # rRNA index
-   mkdir -p star_rrna_index
-   singularity exec ../lncRNAseq.sif STAR --runThreadN 8 \
-      --runMode genomeGenerate \
-      --genomeDir ./star_rrna_index \
-      --genomeFastaFiles GRCm39.primary_assembly.rRNA.fa
+   mkdir -p bowtie2_rrna_index
+   singularity exec ../lncRNAseq.sif bowtie2-build --threads 16 GRCm39.primary_assembly.rRNA.fa bowtie2_rrna_index/rrna
    # RSEM reference
    mkdir -p rsem_index
    singularity exec ../lncRNAseq.sif rsem-prepare-reference --gtf gencode.vM38.primary_assembly.annotation.gtf \
@@ -164,7 +161,7 @@ This workflow is compatible with both single-end and paired-end sequencing data 
       --sjdbGTFfile gencode.vM38.primary_assembly.annotation.gtf ./ercc/ERCC92.gtf
    ```
 
-5.  **Data Preparation**: The data run by this pipeline should be organized as paired-end FASTQ files. If your data are stored in the SRA database, they can be downloaded and converted to FASTQ format first.
+5.  **Data Preparation**: The test data run by this pipeline is from SRR7685878, SRR7685879, SRR7685880 and SRR7685881 in the SRA database. If your data are stored in the SRA database, they can be downloaded and converted to FASTQ format first.
 
    Example:
 
@@ -297,9 +294,9 @@ This workflow is compatible with both single-end and paired-end sequencing data 
           # Genome FASTA file
           fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/GRCm39.primary_assembly.genome.fa"
 
-          # STAR rRNA index
+          # bowtie2 rRNA index
           # Used for removing ribosomal RNA reads
-          rrna_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_rrna_index"
+          rrna_bt2_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/bowtie2_rrna_index/rrna"
 
           # STAR genome index
           star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_genome_index"
