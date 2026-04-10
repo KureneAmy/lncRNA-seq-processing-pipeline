@@ -590,7 +590,7 @@ Add `--no-inline-images` to skip Base64 encoding (smaller file, requires images 
 | Large HTML file | Many samples with large images | Use `report.inline_images: false` or `--no-inline-images` |
 | PyYAML not installed | Python environment missing PyYAML | `pip install pyyaml` (the script also works without it via a built-in fallback) |
           
-# Part V Reference
+# Part VI Reference
 
 [1] Schertzer, M. D., Murvin, M. M. and Calabrese, J. M. (2020). Using RNA Sequencing and Spike-in RNAs to Measure Intracellular Abundance of lncRNAs and mRNAs. Bio-protocol 10(19): e3772.
 

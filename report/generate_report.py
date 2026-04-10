@@ -217,7 +217,6 @@ def build_qc_table(config, output_dir):
             d = cutadapt_stats.get(key, {})
             if d.get("r_processed"):
                 try:
-                    raw_reads = f"{int(float(d['r_processed']) * 1e6 / 1000) / 1000:.2f}M"
                     # The value in multiqc is in millions
                     raw_reads = f"{float(d['r_processed']):.3f}M"
                 except Exception:
