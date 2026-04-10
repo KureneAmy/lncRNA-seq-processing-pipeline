@@ -3,6 +3,7 @@
 configfile: "config.yaml"
 
 import os
+import re
 from pathlib import Path
 
 # ===== 配置 =====
@@ -11,10 +12,27 @@ DESEQ2 = bool(config["analysis"].get("deseq2", True))
 SAMPLES = list(config["samples"].keys())
 CONTRAST = config["analysis"]["contrast"]
 OUTPUT_DIR = config["output_dir"]
+RSEM_GRP = config["ref"].get("rsem_grp")
+
+if not RSEM_GRP:
+    raise ValueError("Missing required config: ref.rsem_grp (absolute path to .grp file)")
+
+if not os.path.isabs(str(RSEM_GRP)):
+    raise ValueError(f"ref.rsem_grp must be an absolute path, got: {RSEM_GRP}")
+
+if not str(RSEM_GRP).endswith(".grp"):
+    raise ValueError(f"ref.rsem_grp must be an absolute path ending with '.grp', got: {RSEM_GRP}")
+
+RSEM_REF_NAME = str(RSEM_GRP)[:-4]
 
 # ===== 样本分类 =====
 PAIRED_SAMPLES = [s for s in SAMPLES if config["samples"][s].get("R2")]
 SINGLE_SAMPLES = [s for s in SAMPLES if not config["samples"][s].get("R2")]
+
+def build_sample_constraint(samples):
+    if not samples:
+        return r"(?!)"
+    return "|".join(re.escape(s) for s in samples)
 
 # ===== 辅助函数 =====
 def get_fastq_r1(wildcards):
@@ -29,25 +47,37 @@ def is_paired_end(wildcards):
 def any_paired_end():
     return any(s.get("R2") for s in config["samples"].values())
 
+def sample_prefix(wildcards):
+    # QC 输出文件统一由 config 里的 prefix 决定，不依赖输入 fastq 的文件名。
+    return str(config["samples"][wildcards.sample].get("prefix", wildcards.sample))
+
+def trimmed_paired_r1(wildcards):
+    return f"{OUTPUT_DIR}/qc/trimmed/{sample_prefix(wildcards)}_val_1.fq.gz"
+
+def trimmed_paired_r2(wildcards):
+    return f"{OUTPUT_DIR}/qc/trimmed/{sample_prefix(wildcards)}_val_2.fq.gz"
+
+def trimmed_single_r1(wildcards):
+    return f"{OUTPUT_DIR}/qc/trimmed/{sample_prefix(wildcards)}_trimmed.fq.gz"
+
 def get_final_outputs(wildcards):
-    """根据样本类型和配置生成最终输出文件"""
     outputs = []
     
     # QC 输出
     if PAIRED_SAMPLES:
         outputs.extend([
-            f"{OUTPUT_DIR}/qc/raw/{sample}_R1_fastqc.html" for sample in PAIRED_SAMPLES
+            f"{OUTPUT_DIR}/logs/{sample}_fastqc_raw_paired.log" for sample in PAIRED_SAMPLES
         ])
         outputs.extend([
-            f"{OUTPUT_DIR}/qc/trimmed/{sample}_R1_val_1_fastqc.html" for sample in PAIRED_SAMPLES
+            f"{OUTPUT_DIR}/logs/{sample}_fastqc_trimmed_paired.log" for sample in PAIRED_SAMPLES
         ])
     
     if SINGLE_SAMPLES:
         outputs.extend([
-            f"{OUTPUT_DIR}/qc/raw/{sample}_fastqc.html" for sample in SINGLE_SAMPLES
+            f"{OUTPUT_DIR}/logs/{sample}_fastqc_raw_single.log" for sample in SINGLE_SAMPLES
         ])
         outputs.extend([
-            f"{OUTPUT_DIR}/qc/trimmed/{sample}_trimmed_fastqc.html" for sample in SINGLE_SAMPLES
+            f"{OUTPUT_DIR}/logs/{sample}_fastqc_trimmed_single.log" for sample in SINGLE_SAMPLES
         ])
     
     # BAM 处理输出
@@ -96,33 +126,24 @@ rule fastqc_raw_paired:
         r1=lambda wildcards: get_fastq_r1(wildcards),
         r2=lambda wildcards: get_fastq_r2(wildcards),
     output:
-        html_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R1_fastqc.html",
-        zip_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R1_fastqc.zip",
-        html_r2=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R2_fastqc.html",
-        zip_r2=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R2_fastqc.zip",
-    params:
-        r1=lambda wildcards: get_fastq_r1(wildcards),
-        r2=lambda wildcards: get_fastq_r2(wildcards),
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_raw_paired.log",
     threads: 2
     container: config["container"]
     shell:
         """
         mkdir -p {OUTPUT_DIR}/qc/raw
-        fastqc {params.r1} {params.r2} -t {threads} -o {OUTPUT_DIR}/qc/raw
+        fastqc "{input.r1}" "{input.r2}" -t {threads} -o {OUTPUT_DIR}/qc/raw > {output.log} 2>&1
         """
 
 rule trim_galore_paired:
     input:
-        html_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R1_fastqc.html",
-        zip_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R1_fastqc.zip",
-        html_r2=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R2_fastqc.html",
-        zip_r2=f"{OUTPUT_DIR}/qc/raw/{{sample}}_R2_fastqc.zip",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_raw_paired.log",
     output:
-        r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R1_val_1.fq.gz",
-        r2=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R2_val_2.fq.gz",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_trim_galore_paired.log",
     params:
         r1=lambda w: get_fastq_r1(w),
         r2=lambda w: get_fastq_r2(w),
+        basename=lambda w: sample_prefix(w),
         adapter_flag=lambda w: f"--adapter {config['params']['trim_galore_adapter_sequence']}" 
                               if config['params'].get('trim_galore_adapter_sequence') else "",
     threads: 4
@@ -131,47 +152,53 @@ rule trim_galore_paired:
         """
         mkdir -p {OUTPUT_DIR}/qc/trimmed
         trim_galore --cores {threads} {params.adapter_flag} --gzip --paired \
-            -o {OUTPUT_DIR}/qc/trimmed {params.r1} {params.r2}
+            -o {OUTPUT_DIR}/qc/trimmed "{params.r1}" "{params.r2}" --basename "{params.basename}" > {output.log} 2>&1
         """
 
 rule fastqc_trimmed_paired:
     input:
-        r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R1_val_1.fq.gz",
-        r2=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R2_val_2.fq.gz",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_trim_galore_paired.log",
     output:
-        html_r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R1_val_1_fastqc.html",
-        zip_r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R1_val_1_fastqc.zip",
-        html_r2=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R2_val_2_fastqc.html",
-        zip_r2=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R2_val_2_fastqc.zip",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_trimmed_paired.log",
     params:
-        r1=lambda w: f"{OUTPUT_DIR}/qc/trimmed/{w.sample}_R1_val_1.fq.gz",
-        r2=lambda w: f"{OUTPUT_DIR}/qc/trimmed/{w.sample}_R2_val_2.fq.gz",
+        r1=lambda w: trimmed_paired_r1(w),
+        r2=lambda w: trimmed_paired_r2(w),
     threads: 2
     container: config["container"]
     shell:
         """
-        fastqc {params.r1} {params.r2} -t {threads} -o {OUTPUT_DIR}/qc/trimmed
+        fastqc "{params.r1}" "{params.r2}" -t {threads} -o {OUTPUT_DIR}/qc/trimmed > {output.log} 2>&1
         """
 
-rule star_remove_rrna_paired:
+rule bowtie2_remove_rrna_paired:
     input:
-        r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R1_val_1.fq.gz",
-        r2=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_R2_val_2.fq.gz",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_trimmed_paired.log",
     output:
         r1=f"{OUTPUT_DIR}/intermediate/rrna_removed/{{sample}}.unmapped.R1.fastq.gz",
         r2=f"{OUTPUT_DIR}/intermediate/rrna_removed/{{sample}}.unmapped.R2.fastq.gz",
     params:
         prefix=f"{OUTPUT_DIR}/intermediate/rrna_removed/{{sample}}.",
+        rrna_bt2_index=config["ref"]["rrna_bt2_index"],
+        r1=lambda w: trimmed_paired_r1(w),
+        r2=lambda w: trimmed_paired_r2(w),
     threads: config["threads"]
     container: config["container"]
+    log:
+        f"{OUTPUT_DIR}/logs/{{sample}}_bowtie2_rrna_removal_paired.log"
     shell:
         """
-        mkdir -p {OUTPUT_DIR}/intermediate/rrna_removed
-        STAR --genomeDir {config[ref][rrna_star_index]} --runThreadN {threads} \
-            --readFilesIn {input.r1} {input.r2} --readFilesCommand zcat \
-            --outFileNamePrefix {params.prefix} --outReadsUnmapped Fastx
-        gzip -c {params.prefix}Unmapped.out.mate1 > {output.r1} && rm {params.prefix}Unmapped.out.mate1
-        gzip -c {params.prefix}Unmapped.out.mate2 > {output.r2} && rm {params.prefix}Unmapped.out.mate2
+        bowtie2 -x {params.rrna_bt2_index} \
+            -1 "{params.r1}" -2 "{params.r2}" \
+            -p {threads} \
+            --very-sensitive-local \
+            -k 1 \
+            --no-unal \
+            --un-conc-gz {params.prefix}unmapped.fastq.gz \
+            -S /dev/null \
+            > {log} 2>&1
+
+        mv {params.prefix}unmapped.fastq.1.gz {output.r1}
+        mv {params.prefix}unmapped.fastq.2.gz {output.r2}
         """
 
 # ===== 单端 QC 规则 =====
@@ -179,26 +206,23 @@ rule fastqc_raw_single:
     input:
         r1=lambda wildcards: get_fastq_r1(wildcards),
     output:
-        html_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_fastqc.html",
-        zip_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_fastqc.zip",
-    params:
-        r1=lambda wildcards: get_fastq_r1(wildcards),
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_raw_single.log",
     threads: 2
     container: config["container"]
     shell:
         """
         mkdir -p {OUTPUT_DIR}/qc/raw
-        fastqc {params.r1} -t {threads} -o {OUTPUT_DIR}/qc/raw
+        fastqc "{input.r1}" -t {threads} -o {OUTPUT_DIR}/qc/raw > {output.log} 2>&1
         """
 
 rule trim_galore_single:
     input:
-        html_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_fastqc.html",
-        zip_r1=f"{OUTPUT_DIR}/qc/raw/{{sample}}_fastqc.zip",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_raw_single.log",
     output:
-        r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_trimmed.fq.gz",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_trim_galore_single.log",
     params:
         r1=lambda w: get_fastq_r1(w),
+        basename=lambda w: sample_prefix(w),
         adapter_flag=lambda w: f"--adapter {config['params']['trim_galore_adapter_sequence']}" 
                               if config['params'].get('trim_galore_adapter_sequence') else "",
     threads: 4
@@ -207,40 +231,49 @@ rule trim_galore_single:
         """
         mkdir -p {OUTPUT_DIR}/qc/trimmed
         trim_galore --cores {threads} {params.adapter_flag} --gzip \
-            -o {OUTPUT_DIR}/qc/trimmed {params.r1}
+            -o {OUTPUT_DIR}/qc/trimmed "{params.r1}" --basename "{params.basename}" > {output.log} 2>&1
         """
 
 rule fastqc_trimmed_single:
     input:
-        r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_trimmed.fq.gz",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_trim_galore_single.log",
     output:
-        html_r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_trimmed_fastqc.html",
-        zip_r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_trimmed_fastqc.zip",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_trimmed_single.log",
     params:
-        r1=lambda w: f"{OUTPUT_DIR}/qc/trimmed/{w.sample}_trimmed.fq.gz",
+        r1=lambda w: trimmed_single_r1(w),
     threads: 2
     container: config["container"]
     shell:
         """
-        fastqc {params.r1} -t {threads} -o {OUTPUT_DIR}/qc/trimmed
+        fastqc "{params.r1}" -t {threads} -o {OUTPUT_DIR}/qc/trimmed > {output.log} 2>&1
         """
 
-rule star_remove_rrna_single:
+rule bowtie2_remove_rrna_single:
     input:
-        r1=f"{OUTPUT_DIR}/qc/trimmed/{{sample}}_trimmed.fq.gz",
+        log = f"{OUTPUT_DIR}/logs/{{sample}}_fastqc_trimmed_single.log",
     output:
         r1=f"{OUTPUT_DIR}/intermediate/rrna_removed/{{sample}}.unmapped.fastq.gz",
     params:
         prefix=f"{OUTPUT_DIR}/intermediate/rrna_removed/{{sample}}.",
+        rrna_bt2_index=config["ref"]["rrna_bt2_index"],
+        r1=lambda w: trimmed_single_r1(w),
     threads: config["threads"]
     container: config["container"]
+    log:
+        f"{OUTPUT_DIR}/logs/{{sample}}_bowtie2_rrna_removal_single.log"
     shell:
         """
-        mkdir -p {OUTPUT_DIR}/intermediate/rrna_removed
-        STAR --genomeDir {config[ref][rrna_star_index]} --runThreadN {threads} \
-            --readFilesIn {input.r1} --readFilesCommand zcat \
-            --outFileNamePrefix {params.prefix} --outReadsUnmapped Fastx
-        gzip -c {params.prefix}Unmapped.out.mate1 > {output.r1} && rm {params.prefix}Unmapped.out.mate1
+        bowtie2 -x {params.rrna_bt2_index} \
+            -U "{params.r1}" \
+            -p {threads} \
+            --very-sensitive-local \
+            -k 1 \
+            --no-unal \
+            --un-gz {params.prefix}unmapped.fastq.gz \
+            -S /dev/null \
+            > {log} 2>&1
+
+        mv {params.prefix}unmapped.fastq.gz {output.r1}
         """
 
 # ===== 对齐规则（配对端）=====
@@ -257,6 +290,8 @@ rule star_align_paired:
         genomeDir=lambda w: config["ercc"]["ercc_star_index"] if ERCC else config["ref"]["star_index"]
     threads: config["threads"]
     container: config["container"]
+    wildcard_constraints:
+        sample=build_sample_constraint(PAIRED_SAMPLES)
     shell:
         """
         mkdir -p {OUTPUT_DIR}/intermediate/align/genome_bam {OUTPUT_DIR}/intermediate/align/transcript_bam {OUTPUT_DIR}/logs/star
@@ -282,6 +317,8 @@ rule star_align_single:
         genomeDir=lambda w: config["ercc"]["ercc_star_index"] if ERCC else config["ref"]["star_index"]
     threads: config["threads"]
     container: config["container"]
+    wildcard_constraints:
+        sample=build_sample_constraint(SINGLE_SAMPLES)
     shell:
         """
         mkdir -p {OUTPUT_DIR}/intermediate/align/genome_bam {OUTPUT_DIR}/intermediate/align/transcript_bam {OUTPUT_DIR}/logs/star
@@ -349,12 +386,13 @@ rule featurecounts:
     params:
         strandedness=config["params"]["featurecounts_strandedness"],
         is_paired="-p" if any_paired_end() else "",
+        gtf=config["ref"]["gtf"],
     threads: config["threads"]
     container: config["container"]
     shell:
         """
         mkdir -p {OUTPUT_DIR}/intermediate {OUTPUT_DIR}/logs
-        featureCounts -a {config[ref][gtf]} -o {output.counts} -s {params.strandedness} \
+        featureCounts -a {params.gtf} -o {output.counts} -s {params.strandedness} \
             {params.is_paired} -T {threads} --verbose {input} > {output.summary} 2>&1
         """
 
@@ -373,19 +411,21 @@ rule format_featurecounts:
 rule rsem_calculate_expression:
     input:
         bam=f"{OUTPUT_DIR}/intermediate/align/transcript_bam/{{sample}}.Aligned.toTranscriptome.out.bam",
-        ref_done=config["ref"]["rsem_index"] + "/rsem_ref.grp",
+        ref_done=RSEM_GRP,
     output:
         f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}.genes.results"
     params:
-        ref_name=config["ref"]["rsem_index"] + "/rsem_ref",
+        ref_name=RSEM_REF_NAME,
         prefix=f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}",
         is_paired=lambda w: "--paired-end" if is_paired_end(w) else ""
     threads: config["threads"]
     container: config["container"]
+    log:
+        f"{OUTPUT_DIR}/logs/rsem/{{sample}}.log"
     shell:
         """
         mkdir -p {OUTPUT_DIR}/intermediate/align/rsem_temp
-        rsem-calculate-expression --bam {params.is_paired} -p {threads} {input.bam} {params.ref_name} {params.prefix}
+        rsem-calculate-expression --bam {params.is_paired} -p {threads} {input.bam} {params.ref_name} {params.prefix} > {log} 2>&1
         """
 
 # ===== ERCC 分析（可选）=====
@@ -399,12 +439,13 @@ if ERCC:
         params:
             strandedness=config["params"]["featurecounts_strandedness"],
             is_paired="-p" if any_paired_end() else "",
+            ercc_gtf=config["ercc"]["ercc_gtf"],
         threads: config["threads"]
         container: config["container"]
         shell:
             """
             mkdir -p {OUTPUT_DIR}/intermediate {OUTPUT_DIR}/logs
-            featureCounts -a {config[ercc][ercc_gtf]} -o {output.counts} -s {params.strandedness} \
+            featureCounts -a {params.ercc_gtf} -o {output.counts} -s {params.strandedness} \
                 {params.is_paired} -T {threads} --verbose {input} > {output.summary} 2>&1
             """
 
@@ -517,5 +558,5 @@ rule multiqc:
     shell:
         """
         mkdir -p {OUTPUT_DIR}/results
-        multiqc {OUTPUT_DIR} -f -n {OUTPUT_DIR}/results/multiqc_report.html
+        multiqc {OUTPUT_DIR} -f -o {OUTPUT_DIR}/results
         """
