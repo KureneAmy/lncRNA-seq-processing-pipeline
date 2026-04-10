@@ -9,6 +9,7 @@ from pathlib import Path
 # ===== 配置 =====
 ERCC = bool(config["ercc"].get("use_ercc", False))
 DESEQ2 = bool(config["analysis"].get("deseq2", True))
+REPORT_ENABLE = bool(config.get("report", {}).get("enable", True))
 SAMPLES = list(config["samples"].keys())
 CONTRAST = config["analysis"]["contrast"]
 OUTPUT_DIR = config["output_dir"]
@@ -112,6 +113,11 @@ def get_final_outputs(wildcards):
 
     if DESEQ2:
         outputs.append(f"{OUTPUT_DIR}/lncRNA_analysis_output/tables/QC_summary.csv")
+
+    # 报告输出
+    if REPORT_ENABLE:
+        outputs.append(f"{OUTPUT_DIR}/report/report.html")
+        outputs.append(f"{OUTPUT_DIR}/report/report.md")
     
     return outputs
 
@@ -560,3 +566,49 @@ rule multiqc:
         mkdir -p {OUTPUT_DIR}/results
         multiqc {OUTPUT_DIR} -f -o {OUTPUT_DIR}/results
         """
+
+# ===== 报告生成 =====
+if REPORT_ENABLE:
+    def _report_inputs(wildcards):
+        """Collect all upstream outputs that should exist before report generation."""
+        inputs = {
+            "multiqc": f"{OUTPUT_DIR}/results/multiqc_report.html",
+            "config": "config.yaml",
+        }
+        if DESEQ2:
+            inputs["deseq2_results"] = (
+                f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.deseq2_results.csv"
+            )
+            inputs["qc_summary"] = (
+                f"{OUTPUT_DIR}/lncRNA_analysis_output/tables/QC_summary.csv"
+            )
+        if ERCC:
+            inputs["ercc_mpc"] = expand(
+                f"{OUTPUT_DIR}/results/{{sample}}_mpc.txt", sample=SAMPLES
+            )
+        return inputs
+
+    # Absolute path to this script so the rule works regardless of working directory.
+    _REPORT_SCRIPT = str(Path(workflow.snakefile).parent / "report" / "generate_report.py")
+
+    rule generate_report:
+        input:
+            unpack(_report_inputs)
+        output:
+            html = f"{OUTPUT_DIR}/report/report.html",
+            md   = f"{OUTPUT_DIR}/report/report.md",
+        params:
+            script     = _REPORT_SCRIPT,
+            output_dir = OUTPUT_DIR,
+            report_dir = f"{OUTPUT_DIR}/report",
+        log:
+            f"{OUTPUT_DIR}/logs/generate_report.log"
+        shell:
+            """
+            mkdir -p {params.report_dir}
+            python {params.script} \
+                --config {input.config} \
+                --outdir {params.output_dir} \
+                --report {params.report_dir} \
+                > {log} 2>&1
+            """
