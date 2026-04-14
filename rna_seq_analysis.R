@@ -37,8 +37,8 @@ parser$add_argument("--tx2gene", type = "character",
                     help = "Path to tx2gene mapping file (quant mode).")
 parser$add_argument("--output_counts_matrix", type = "character", required = TRUE,
                     help = "Path to save the final gene symbol count matrix.")
-parser$add_argument("--output_tpm_matrix", type = "character", required = TRUE,
-                    help = "Path to save the final gene symbol TPM matrix.")
+parser$add_argument("--output_tpm_matrix", type = "character", required = FALSE,
+                    help = "Path to save the final gene symbol TPM matrix (optional).")
 
 args <- parser$parse_args()
 
@@ -114,15 +114,13 @@ annot_db <- get(annot_db_name)
 # -------------------------
 counts_data_raw <- NULL
 tpm_data_raw <- NULL
+use_rsem_tpm <- FALSE
 
 if (args$mode == "align") {
   cat("Mode: align. Loading featureCounts and RSEM data.\n")
 
   if (is.null(args$input_counts) || args$input_counts == "") {
-    stop("--input_counts is required in align mode.")
-  }
-  if (is.null(args$input_rsem_files) || args$input_rsem_files == "") {
-    stop("--input_rsem_files is required in align mode.")
+    stop("--input_counts is required.")
   }
 
   # featureCounts
@@ -146,28 +144,32 @@ if (args$mode == "align") {
   counts_data_raw <- counts_data_raw[, sample_names, drop = FALSE]
 
   # RSEM TPM files
-  cat("Loading and merging RSEM TPM files...\n")
-  rsem_files <- strsplit(args$input_rsem_files, ",")[[1]]
-  rsem_files <- trimws(rsem_files)
+  if (!is.null(args$input_rsem_files) && args$input_rsem_files != "") {
+    cat("RSEM input detected. Loading and merging RSEM TPM files...\n")
+    rsem_files <- strsplit(args$input_rsem_files, ",")[[1]]
+    rsem_files <- trimws(rsem_files)
 
-  if (length(rsem_files) != length(sample_names)) {
-    stop(paste0("Number of --input_rsem_files (", length(rsem_files),
-                ") must equal number of samples in config (", length(sample_names), ")."))
+    if (length(rsem_files) != length(sample_names)) {
+      stop(paste0("Number of --input_rsem_files (", length(rsem_files),
+                  ") must equal number of samples in config (", length(sample_names), ")."))
+    }
+  
+    tpm_list <- map2(rsem_files, sample_names, function(file_path, sample_name) {
+      read_tsv(file_path, show_col_types = FALSE) %>%
+        select(gene_id, TPM) %>%
+        rename(!!sample_name := TPM)
+    })
+  
+    tpm_df_merged <- reduce(tpm_list, full_join, by = "gene_id")
+    tpm_data_raw <- tpm_df_merged %>%
+      column_to_rownames("gene_id") %>%
+      as.matrix()
+    use_rsem_tpm <- TRUE
+    cat("RSEM TPM data successfully merged.\n")
+  } else {
+    cat("No --input_rsem_files provided. RSEM TPM matrix will be skipped.\n")
   }
-
-  tpm_list <- map2(rsem_files, sample_names, function(file_path, sample_name) {
-    read_tsv(file_path, show_col_types = FALSE) %>%
-      select(gene_id, TPM) %>%
-      rename(!!sample_name := TPM)
-  })
-
-  tpm_df_merged <- reduce(tpm_list, full_join, by = "gene_id")
-  tpm_data_raw <- tpm_df_merged %>%
-    column_to_rownames("gene_id") %>%
-    as.matrix()
-
-  cat("RSEM TPM data successfully merged.\n")
-
+  
 } else if (args$mode == "quant") {
   cat("Mode: quant. Loading Salmon data with tximport.\n")
 
@@ -207,18 +209,25 @@ if (args$mode == "align") {
 
 # Ensure matrices have colnames and match config
 if (is.null(colnames(counts_data_raw))) stop("counts_data_raw has no colnames.")
-if (is.null(colnames(tpm_data_raw))) stop("tpm_data_raw has no colnames.")
+if (!is.null(tpm_data_raw) && is.null(colnames(tpm_data_raw))) stop("tpm_data_raw has no colnames.")
 
 # -------------------------
 # 6) Save Aggregated Matrices (always)
 # -------------------------
 counts_symbol <- convert_ids_and_aggregate(counts_data_raw, annot_db)
-tpm_symbol <- convert_ids_and_aggregate(tpm_data_raw, annot_db)
 
 write.table(counts_symbol, file = args$output_counts_matrix,
             sep = "\t", quote = FALSE, col.names = NA)
-write.table(tpm_symbol, file = args$output_tpm_matrix,
-            sep = "\t", quote = FALSE, col.names = NA)
+
+if (!is.null(tpm_data_raw) && !is.null(args$output_tpm_matrix) && args$output_tpm_matrix != "") {
+  tpm_symbol <- convert_ids_and_aggregate(tpm_data_raw, annot_db)
+  write.table(tpm_symbol, file = args$output_tpm_matrix,
+              sep = "\t", quote = FALSE, col.names = NA)
+  cat("Final symbol-keyed TPM matrix saved.\n")
+} else {
+  cat("TPM matrix skipped.\n")
+}
+
 cat("Final symbol-keyed count and TPM matrices saved.\n")
 
 # -------------------------

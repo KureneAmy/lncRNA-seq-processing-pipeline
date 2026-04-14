@@ -7,12 +7,12 @@
 # If you have ERCC spike-ins, set to true and provide the path to other necessary files
 # If not using ERCC, set to false and other fields will be ignored
 ercc:
-  use_ercc: false
-  ercc_fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92.fa"
-  ercc_gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92.gtf"
-  ercc_conc: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/ercc/ERCC92_conc.txt"
-  ercc_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_ercc_index"
-  ercc_analysis_script: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/scripts/ercc_analysis.R"
+  use_ercc: true
+  ercc_fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/ercc/ERCC92.fa"
+  ercc_gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/ercc/ERCC92.gtf"
+  ercc_conc: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/ercc/ERCC92_conc.txt"
+  ercc_star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/star_ercc_index"
+  ercc_analysis_script: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Scripts/ercc_analysis.R"
 
 ercc_params:
   # Specify the path to the ERCC spike-in database
@@ -24,20 +24,20 @@ ercc_params:
 # Scripts essential for whole pipeline (paths should be ABSOLUTE)
 scripts:
   # R script for differential expression analysis and GO enrichment
-  rna_analysis: "/mnt1/4.NAS2025/wutan/wutan2/easyomics/4.lncRNA/Scripts/rna_seq_analysis.R"
+  rna_analysis: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Scripts/rna_seq_analysis.R"
   # R script for lncRNA downstream analysis
-  lncRNA_analysis: "/mnt1/4.NAS2025/wutan/wutan2/easyomics/4.lncRNA/Scripts/lncRNA_analysis.R"
+  lncRNA_analysis: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Scripts/lncRNA_analysis.R"
   # If using ERCC, provide the R script for ERCC analysis in Expermental Design section
 
 
 # --- 2. Run Parameters ---
 # Path to the Singularity container (lncRNAseq.sif)
 # Use ABSOLUTE path
-container: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/pack/Containers/lncRNAseq.sif"
+container: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Containers/lncRNAseq.sif"
 
 # Output directory for all results
 # Use ABSOLUTE path
-output_dir: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNAseq/output"
+output_dir: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Output"
 
 # --- 3. Samples ---
 # Sample information with paths to FASTQ files
@@ -48,41 +48,38 @@ output_dir: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNAseq/output"
 # The "condition" field should match your experimental groups
 # and will be used in differential expression analysis
 samples:
-  SRR8612671_control_Rep1:
-    R1: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612671_R1.fq.gz"
-    R2: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612671_R2.fq.gz"
-    prefix: "SRR8612671"
+  SRR7685881_control_Rep2:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685881.fastq.gz"
+    prefix: "control_Rep2"
     condition: "Control"
   
-  SRR8612672_control_Rep2:
-    R1: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612672_R1.fq.gz"
-    R2: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612672_R2.fq.gz"
-    prefix: "SRR8612672"
+  SRR7685880_control_Rep1:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685880.fastq.gz"
+    prefix: "control_Rep1"
     condition: "Control"
     
-  SRR8612669_treated_Rep1:
-    R1: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612669_R1.fq.gz"
-    R2: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612669_R2.fq.gz"
-    prefix: "SRR8612669"
+  SRR7685879_treated_Rep2:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685879.fastq.gz"
+    prefix: "treated_Rep2"
     condition: "Treated"
 
-  SRR8612670_treated_Rep2:
-    R1: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612670_R1.fq.gz"
-    R2: "/mnt1/2.NAS2024/zhanghe/GSE126964/raw/fastq/SRR8612670_R2.fq.gz"
-    prefix: "SRR8612670"
+  SRR7685878_treated_Rep1:
+    R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685878.fastq.gz"
+    prefix: "treated_Rep1"
     condition: "Treated"
     
-# Remember to keep the file name same with the sample name.
 # Example for single-end data:
 #  Sample_SE:
-#    R1: "/path/to/data/Sample_SE.fastq.gz"
+#    R1: "/path/to/data/Sample_SE_data.fastq.gz"
+#    prefix: "expr1"
 #    condition: "Control"/...
 #
 # Example for paired-end data:
 #  Sample_PE:
-#    R1: "/path/to/data/Sample_PE_R1.fastq.gz"
-#    R2: "/path/to/data/Sample_PE_R2.fastq.gz"
-#    condition: "Control"/...
+#    R1: "/path/to/data/Sample_PE_data_R1.fastq.gz"
+#    R2: "/path/to/data/Sample_PE_data_R2.fastq.gz"
+#    prefix: "expr2"
+#    condition: "Control"/... 
 
 
 # --- 4. Reference Files ---
@@ -90,29 +87,28 @@ samples:
 # See README.md for instructions on preparing reference files
 ref:
   # GTF annotation file
-  gtf: "/mnt/wutan/data/genome/hg38/gencode.v44.annotation.gtf"
+  gtf: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/gencode.vM38.primary_assembly.annotation.gtf"
   
   # Genome FASTA file
-  fasta: "/mnt/wutan/data/genome/hg38/GRCh38.primary_assembly.genome.chr.fa"
+  fasta: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/GRCm39.primary_assembly.genome.fa"
   
   # STAR rRNA index
   # Used for removing ribosomal RNA reads
-  rrna_bt2_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/GRO_test/data/GRCh38.primary_assembly.rDNA.bowtie2_index/GRCh38.primary_assembly.rDNA"
+  rrna_bt2_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/bowtie2_rrna_index/rrna"
   
   # STAR genome index
-  star_index: "/mnt/share/Index/STAR_index/hg38_chr_149"
+  star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/star_genome_index"
   
-  # RSEM grp file (ABSOLUTE path)
+  # RSEM grp file (ABSOLUTE path) (optional)
   # The pipeline will infer RSEM reference name by removing the '.grp' suffix.
   # Example: '/path/to/rsem_ref.grp' -> ref name '/path/to/rsem_ref'
-  rsem_grp: "/mnt/wutan/data/genome/hg38/rsem_v44.grp"
-  
+  rsem_grp: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/References/rsem_index/rsem_ref.grp"
 
 
 # --- 5. Analysis Parameters ---
 # Number of CPU threads to use for parallel processing
 # Recommended: 8 cores
-threads: 20
+threads: 8
 
 params:
   # Adapter sequence for Trim Galore.
@@ -129,6 +125,13 @@ params:
 
 # --- 6. Differential Expression Analysis Settings ---
 analysis:
+
+  # Whether to perform RSEM quantification
+  # If true, RSEM will be used for quantification and tpm matrix will be generated. Please make sure the RSEM reference is properly prepared and the path is correctly specified in the Reference Files section.
+  # If false, featureCounts will be used for quantification.
+  use_rsem: false
+
+  # Differential expression analysis settings
   # Contrast for differential expression analysis
   # Format: [treatment_group, control_group]
   # The first group will be compared against the second (control)
@@ -147,12 +150,12 @@ analysis:
   # For human: "org.Hs.eg.db"
   # For mouse: "org.Mm.eg.db"
   # For other species, see Bioconductor annotation packages
-  r_annotation_db: "org.Hs.eg.db"
+  r_annotation_db: "org.Mm.eg.db"
   
   # Organism name for GO enrichment
   # For human: "hsa"
   # For mouse: "mmu"
-  organism: "hsa"
+  organism: "mmu"
   
   # Whether to perform DESeq2 analysis and the downstream lncRNA-seq analysis
   # If you don't have at least 2 replicated samples for each group, deseq2 should be set to false.
