@@ -604,8 +604,12 @@ if REPORT_ENABLE:
             inputs["rsem_tpm"] = f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv"
         return inputs
 
-    # Absolute path to this script so the rule works regardless of working directory.
-    _REPORT_SCRIPT = config["report"]["script"]
+    # Allow config override; fallback to repository script if not set.
+    _REPORT_SCRIPT = config.get("report", {}).get("script")
+    if not _REPORT_SCRIPT:
+        _REPORT_SCRIPT = str((Path(workflow.basedir) / "report" / "generate_report.py").resolve())
+    elif not os.path.isabs(str(_REPORT_SCRIPT)):
+        _REPORT_SCRIPT = str((Path(workflow.basedir) / str(_REPORT_SCRIPT)).resolve())
 
     rule generate_report:
         input:

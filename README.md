@@ -510,8 +510,89 @@ This workflow is compatible with both single-end and paired-end sequencing data 
     
         - The output for end-to-end downstream analysis pipeline for RNA-seq differential expression data, with a focus on identifying and characterising long non-coding RNAs (lncRNAs).
         - Check https://github.com/Cingoz-Lab/lncRNA-Analysis (ref 2) for details.
+
+      - **`report/report.html`** and **`report/report.md`**
+
+        - Auto-generated analysis reports produced at the end of the pipeline.
+        - The HTML report is a **single self-contained file** (all images are embedded as Base64 data URIs) that can be opened offline in any modern browser.
+        - The Markdown report mirrors the same structure and is suitable for version control or further editing.
+        - Report generation is controlled by the `report` block in `config.yaml`.
           
-# Part V Reference
+# Part V Report Generation
+
+The pipeline automatically produces an HTML report and a Markdown report at the end of every successful run. No extra steps are needed.
+
+## Report output location
+
+```
+<output_dir>/report/lncRNA-seq_Analysis_report.html   # Offline-ready HTML (images embedded as Base64)
+<output_dir>/report/lncRNA-seq_Analysis_report.md     # Markdown version (images as file paths)
+```
+
+## Report configuration (`config.yaml`)
+
+```yaml
+report:
+  enable: true                          # Set to false to skip report generation
+  script: "report/generate_report.py"   # Optional override path to report generator script
+  title: "lncRNA-seq Analysis Report"   # Report title
+  author: "Your Name"                   # Analyst name shown in the header
+  project: "My Project"                 # Project name shown in the header
+  inline_images: true                   # Embed images as Base64 (offline-ready)
+```
+
+## Enabling / disabling optional modules
+
+| Module | config.yaml key | Effect on report |
+|--------|----------------|-----------------|
+| RSEM quantification | `analysis.use_rsem: true/false` | Section 3 shows RSEM TPM matrix; file index includes RSEM TPM file |
+| DESeq2 + lncRNA downstream | `analysis.deseq2: true/false` | Sections 4 (lncRNA) and 6 (DESeq2) are shown or hidden |
+| ERCC spike-in quantification | `ercc.use_ercc: true/false` | Section 5 (ERCC) is shown or hidden |
+
+### Switch combinations
+
+| `ercc.use_ercc` | `analysis.deseq2` | Sections shown |
+|:-:|:-:|---|
+| false | false | 1 Overview · 2 QC · 3 Alignment · 7 File index |
+| true  | false | + 5 ERCC |
+| false | true  | + 4 lncRNA · 6 DESeq2 |
+| true  | true  | All sections |
+
+## Report sections
+
+| # | Section | Source files |
+|---|---------|-------------|
+| 1 | Project & Parameter Overview | `config.yaml` |
+| 2 | Data QC (three-line table) | `results/multiqc_report_data/` |
+| 3 | Alignment & Quantification | MultiQC STAR / featureCounts tables |
+| 4 | lncRNA Analysis *(DESeq2=true)* | `lncRNA_analysis_output/tables/` and `plots/` |
+| 5 | ERCC Analysis *(ERCC=true)* | `results/*_mpc.txt`, `*_ERCC_standard_curve.pdf` |
+| 6 | DESeq2 Differential Expression *(DESeq2=true)* | `results/*_vs_*.deseq2_results.csv`, volcano / GO plots |
+| 7 | Output File Index | File existence check |
+
+## Running the report script manually
+
+If you need to regenerate the report without re-running the whole pipeline:
+
+```bash
+python report/generate_report.py \
+    --config config.yaml \
+    --outdir /path/to/pipeline/output \
+    --report /path/to/pipeline/output/report
+```
+
+Add `--no-inline-images` to skip Base64 encoding (smaller file, requires images to be co-located).
+
+## Troubleshooting
+
+| Issue | Likely cause | Fix |
+|-------|-------------|-----|
+| Report section shows "未产出 / Not available" | Pipeline step was not run or failed | Check the corresponding log file in `logs/` |
+| `report.html` not generated after `snakemake` | `report.enable: false` in config | Set `report.enable: true` |
+| Large HTML file | Many samples with large images | Use `report.inline_images: false` or `--no-inline-images` |
+| PyYAML not installed | Python environment missing PyYAML | `pip install pyyaml` (the script also works without it via a built-in fallback) |
+          
+# Part VI Reference
 
 [1] Schertzer, M. D., Murvin, M. M. and Calabrese, J. M. (2020). Using RNA Sequencing and Spike-in RNAs to Measure Intracellular Abundance of lncRNAs and mRNAs. Bio-protocol 10(19): e3772.
 
