@@ -163,3 +163,18 @@ analysis:
   deseq2: true
 
 
+# --- 7. Report Settings ---
+# Controls the automatic HTML + Markdown report generated at the end of the pipeline.
+report:
+  # Set to false to skip report generation entirely.
+  enable: true
+  # absolute path to the report generation script (generate_report.py)
+  script: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Scripts/generate_report.py"
+  # Report metadata (displayed in the report header).
+  title: "lncRNA-seq Analysis Report"
+  author: "EasyOmics Pipeline"
+  project: "lncRNA-seq Project"
+
+  # When true, images are embedded as base64 data URIs so the HTML file
+  # can be opened offline without any external dependencies.
+  inline_images: true
