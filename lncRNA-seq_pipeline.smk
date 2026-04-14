@@ -600,6 +600,8 @@ if REPORT_ENABLE:
             inputs["ercc_mpc"] = expand(
                 f"{OUTPUT_DIR}/results/{{sample}}_mpc.txt", sample=SAMPLES
             )
+        if USE_RSEM:
+            inputs["rsem_tpm"] = f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv"
         return inputs
 
     # Absolute path to this script so the rule works regardless of working directory.

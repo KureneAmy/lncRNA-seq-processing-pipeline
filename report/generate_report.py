@@ -708,6 +708,7 @@ def build_html(config, output_dir, inline_images=True):
     contrast = config["analysis"].get("contrast", ["Treated", "Control"])
     ercc_enabled = bool(config.get("ercc", {}).get("use_ercc", False))
     deseq2_enabled = bool(config.get("analysis", {}).get("deseq2", True))
+    use_rsem = bool(config.get("analysis", {}).get("use_rsem", False))
 
     # Collect data
     qc_rows = build_qc_table(config, output_dir)
@@ -745,6 +746,23 @@ def build_html(config, output_dir, inline_images=True):
     ref_cfg = config.get("ref", {})
     params_cfg = config.get("params", {})
 
+    params_items = [
+        ("参考基因组 (FASTA)", Path(ref_cfg.get("fasta", "N/A")).name),
+        ("注释文件 (GTF)", Path(ref_cfg.get("gtf", "N/A")).name),
+        ("比较对照", f"{contrast[0]} vs {contrast[1]}"),
+        ("FDR 阈值", config["analysis"].get("fdr_threshold", "N/A")),
+        ("|log₂FC| 阈值", config["analysis"].get("lfc_threshold", "N/A")),
+        ("链特异性", params_cfg.get("featurecounts_strandedness", "N/A")),
+        ("CPU 线程数", config.get("threads", "N/A")),
+        ("RSEM 定量", '<span class="badge badge-on">启用</span>' if use_rsem else '<span class="badge badge-off">未启用（featureCounts）</span>'),
+        ("ERCC 质控", '<span class="badge badge-on">启用</span>' if ercc_enabled else '<span class="badge badge-off">未启用</span>'),
+        ("DESeq2 分析", '<span class="badge badge-on">启用</span>' if deseq2_enabled else '<span class="badge badge-off">未启用</span>'),
+        ("报告生成时间", now),
+        ("物种注释库", config["analysis"].get("r_annotation_db", "N/A")),
+    ]
+    if use_rsem and ref_cfg.get("rsem_grp"):
+        params_items.insert(2, ("RSEM 参考", Path(ref_cfg["rsem_grp"]).name))
+
     sec1 = section_open("overview", "项目与参数概览", 1)
     sec1 += '<div class="subsection"><h3>样本信息</h3>'
     sec1 += three_line_table(
@@ -754,20 +772,7 @@ def build_html(config, output_dir, inline_images=True):
     )
     sec1 += "</div>"
     sec1 += '<div class="subsection"><h3>关键参数</h3>'
-    sec1 += param_grid([
-        ("参考基因组 (FASTA)", Path(ref_cfg.get("fasta", "N/A")).name),
-        ("注释文件 (GTF)", Path(ref_cfg.get("gtf", "N/A")).name),
-        ("RSEM 参考", Path(ref_cfg.get("rsem_grp", "N/A")).name),
-        ("比较对照", f"{contrast[0]} vs {contrast[1]}"),
-        ("FDR 阈值", config["analysis"].get("fdr_threshold", "N/A")),
-        ("|log₂FC| 阈值", config["analysis"].get("lfc_threshold", "N/A")),
-        ("链特异性", params_cfg.get("featurecounts_strandedness", "N/A")),
-        ("CPU 线程数", config.get("threads", "N/A")),
-        ("ERCC 质控", '<span class="badge badge-on">启用</span>' if ercc_enabled else '<span class="badge badge-off">未启用</span>'),
-        ("DESeq2 分析", '<span class="badge badge-on">启用</span>' if deseq2_enabled else '<span class="badge badge-off">未启用</span>'),
-        ("报告生成时间", now),
-        ("物种注释库", config["analysis"].get("r_annotation_db", "N/A")),
-    ])
+    sec1 += param_grid(params_items)
     sec1 += "</div>"
     sec1 += section_close()
 
@@ -843,11 +848,13 @@ def build_html(config, output_dir, inline_images=True):
     # TPM matrix info
     tpm_path = Path(output_dir) / "results" / "RSEM.gene_tpm.symbol.tsv"
     counts_path = Path(output_dir) / "results" / "featureCounts.gene_counts.symbol.tsv"
-    sec3 += '<div class="subsection"><h3>定量结果文件</h3>'
-    sec3 += param_grid([
-        ("RSEM TPM 矩阵", "results/RSEM.gene_tpm.symbol.tsv" if tpm_path.is_file() else "未产出"),
+    quant_grid_items = [
         ("featureCounts 计数矩阵", "results/featureCounts.gene_counts.symbol.tsv" if counts_path.is_file() else "未产出"),
-    ])
+    ]
+    if use_rsem:
+        quant_grid_items.insert(0, ("RSEM TPM 矩阵", "results/RSEM.gene_tpm.symbol.tsv" if tpm_path.is_file() else "未产出"))
+    sec3 += '<div class="subsection"><h3>定量结果文件</h3>'
+    sec3 += param_grid(quant_grid_items)
     sec3 += "</div>"
     sec3 += section_close()
 
@@ -978,8 +985,9 @@ def build_html(config, output_dir, inline_images=True):
     file_items = [
         (f"{output_dir}/results/multiqc_report.html", "MultiQC 质控汇总报告"),
         (f"{output_dir}/results/featureCounts.gene_counts.symbol.tsv", "featureCounts 基因计数矩阵"),
-        (f"{output_dir}/results/RSEM.gene_tpm.symbol.tsv", "RSEM TPM 表达矩阵"),
     ]
+    if use_rsem:
+        file_items.append((f"{output_dir}/results/RSEM.gene_tpm.symbol.tsv", "RSEM TPM 表达矩阵"))
     if deseq2_enabled:
         file_items += [
             (f"{output_dir}/results/{contrast_str}.deseq2_results.csv", "DESeq2 差异分析结果"),
@@ -1084,6 +1092,7 @@ def build_markdown(config, output_dir):
     contrast = config["analysis"].get("contrast", ["Treated", "Control"])
     ercc_enabled = bool(config.get("ercc", {}).get("use_ercc", False))
     deseq2_enabled = bool(config.get("analysis", {}).get("deseq2", True))
+    use_rsem = bool(config.get("analysis", {}).get("use_rsem", False))
     contrast_str = f"{contrast[0]}_vs_{contrast[1]}"
 
     qc_rows = build_qc_table(config, output_dir)
@@ -1124,6 +1133,7 @@ def build_markdown(config, output_dir):
         f"| 比较对照 | {contrast[0]} vs {contrast[1]} |",
         f"| FDR 阈值 | {config['analysis'].get('fdr_threshold', 'N/A')} |",
         f"| |log\u2082FC| 阈值 | {config['analysis'].get('lfc_threshold', 'N/A')} |",
+        f"| RSEM 定量 | {'✅ 启用' if use_rsem else '❌ 未启用（featureCounts）'} |",
         f"| ERCC 质控 | {'✅ 启用' if ercc_enabled else '❌ 未启用'} |",
         f"| DESeq2 分析 | {'✅ 启用' if deseq2_enabled else '❌ 未启用'} |",
         "",
@@ -1169,15 +1179,16 @@ def build_markdown(config, output_dir):
             lines.append(md_table(fh, fr))
             lines.append("")
 
-    tpm_ok = (Path(output_dir) / "results" / "RSEM.gene_tpm.symbol.tsv").is_file()
     cnt_ok = (Path(output_dir) / "results" / "featureCounts.gene_counts.symbol.tsv").is_file()
     lines += [
         "### 3.2 定量结果文件",
         "",
-        f"- RSEM TPM 矩阵：`results/RSEM.gene_tpm.symbol.tsv` {'✅' if tpm_ok else '❌ 未产出'}",
         f"- featureCounts 计数：`results/featureCounts.gene_counts.symbol.tsv` {'✅' if cnt_ok else '❌ 未产出'}",
-        "",
     ]
+    if use_rsem:
+        tpm_ok = (Path(output_dir) / "results" / "RSEM.gene_tpm.symbol.tsv").is_file()
+        lines.append(f"- RSEM TPM 矩阵：`results/RSEM.gene_tpm.symbol.tsv` {'✅' if tpm_ok else '❌ 未产出'}")
+    lines.append("")
 
     # Section 4: lncRNA
     lines += ["---", "", "## 4. lncRNA 相关结果汇总", ""]
@@ -1260,8 +1271,9 @@ def build_markdown(config, output_dir):
     file_items = [
         (f"{output_dir}/results/multiqc_report.html", "MultiQC 质控汇总报告"),
         (f"{output_dir}/results/featureCounts.gene_counts.symbol.tsv", "featureCounts 基因计数矩阵"),
-        (f"{output_dir}/results/RSEM.gene_tpm.symbol.tsv", "RSEM TPM 表达矩阵"),
     ]
+    if use_rsem:
+        file_items.append((f"{output_dir}/results/RSEM.gene_tpm.symbol.tsv", "RSEM TPM 表达矩阵"))
     if deseq2_enabled:
         file_items += [
             (f"{output_dir}/results/{contrast_str}.deseq2_results.csv", "DESeq2 差异分析结果"),

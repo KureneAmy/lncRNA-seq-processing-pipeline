@@ -544,6 +544,7 @@ report:
 
 | Module | config.yaml key | Effect on report |
 |--------|----------------|-----------------|
+| RSEM quantification | `analysis.use_rsem: true/false` | Section 3 shows RSEM TPM matrix; file index includes RSEM TPM file |
 | DESeq2 + lncRNA downstream | `analysis.deseq2: true/false` | Sections 4 (lncRNA) and 6 (DESeq2) are shown or hidden |
 | ERCC spike-in quantification | `ercc.use_ercc: true/false` | Section 5 (ERCC) is shown or hidden |
 
