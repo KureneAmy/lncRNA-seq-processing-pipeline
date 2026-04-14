@@ -604,13 +604,8 @@ if REPORT_ENABLE:
             inputs["rsem_tpm"] = f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv"
         return inputs
 
-    # Script path: prefer config["report"]["script"] if provided, else auto-discover.
-    _script_from_config = config.get("report", {}).get("script", "")
-    _REPORT_SCRIPT = (
-        _script_from_config
-        if _script_from_config
-        else str(Path(workflow.snakefile).parent / "report" / "generate_report.py")
-    )
+    # Absolute path to this script so the rule works regardless of working directory.
+    _REPORT_SCRIPT = config["report"]["script"]
 
     rule generate_report:
         input:
