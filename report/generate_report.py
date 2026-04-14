@@ -185,6 +185,65 @@ def parse_quality_scores(path):
     return result
 
 
+def load_multiqc_json(path):
+    """Load multiqc_data.json and return dict, else {}."""
+    content = safe_read(path)
+    if not content:
+        return {}
+    try:
+        obj = json.loads(content)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        return {}
+
+
+def parse_quality_scores_from_multiqc_json(multiqc_json):
+    """
+    Parse Q20/Q30 percentages from report_plot_data.fastqc_per_sequence_quality_scores_plot.
+    Returns dict: sample -> {q20_pct, q30_pct}
+    """
+    result = {}
+    plot = (multiqc_json.get("report_plot_data", {})
+            .get("fastqc_per_sequence_quality_scores_plot", {}))
+    datasets = plot.get("datasets", [])
+    if not isinstance(datasets, list):
+        return result
+
+    for ds in datasets:
+        lines = ds.get("lines", [])
+        if not isinstance(lines, list):
+            continue
+        for trace in lines:
+            if not isinstance(trace, dict):
+                continue
+            sample = trace.get("name")
+            pairs = trace.get("pairs", [])
+            if not sample or not isinstance(pairs, list):
+                continue
+            total = 0.0
+            q20 = 0.0
+            q30 = 0.0
+            for p in pairs:
+                if not isinstance(p, (list, tuple)) or len(p) < 2:
+                    continue
+                try:
+                    q = float(p[0])
+                    c = float(p[1])
+                except Exception:
+                    continue
+                total += c
+                if q >= 20:
+                    q20 += c
+                if q >= 30:
+                    q30 += c
+            if total > 0:
+                result[sample] = {
+                    "q20_pct": round(q20 / total * 100, 2),
+                    "q30_pct": round(q30 / total * 100, 2),
+                }
+    return result
+
+
 # ---------------------------------------------------------------------------
 # QC table builder
 # ---------------------------------------------------------------------------
@@ -231,12 +290,19 @@ def build_qc_table(config, output_dir):
     """
     multiqc_dir = Path(output_dir) / "results" / "multiqc_report_data"
 
-    gen_stats = load_multiqc_table(multiqc_dir / "multiqc_general_stats.txt")
-    star_stats = load_multiqc_table(multiqc_dir / "multiqc_star.txt")
-    cutadapt_stats = load_multiqc_table(multiqc_dir / "multiqc_cutadapt.txt")
-    fastqc_stats = load_multiqc_table(multiqc_dir / "multiqc_fastqc.txt")
-    quality_scores = parse_quality_scores(
-        multiqc_dir / "fastqc_per_sequence_quality_scores_plot.txt")
+    multiqc_json = load_multiqc_json(multiqc_dir / "multiqc_data.json")
+    raw_data = multiqc_json.get("report_saved_raw_data", {})
+
+    gen_stats = raw_data.get("multiqc_general_stats", {}) or load_multiqc_table(
+        multiqc_dir / "multiqc_general_stats.txt")
+    star_stats = raw_data.get("multiqc_star", {}) or load_multiqc_table(
+        multiqc_dir / "multiqc_star.txt")
+    cutadapt_stats = raw_data.get("multiqc_cutadapt", {}) or load_multiqc_table(
+        multiqc_dir / "multiqc_cutadapt.txt")
+    fastqc_stats = raw_data.get("multiqc_fastqc", {}) or load_multiqc_table(
+        multiqc_dir / "multiqc_fastqc.txt")
+    quality_scores = (parse_quality_scores_from_multiqc_json(multiqc_json)
+                      or parse_quality_scores(multiqc_dir / "fastqc_per_sequence_quality_scores_plot.txt"))
 
     samples = config["samples"]
     rows = []
@@ -281,29 +347,40 @@ def build_qc_table(config, output_dir):
 
         # --- GC% ---
         gc_pct = "N/A"
-        for key in [sample_name, f"{prefix}_R1", prefix]:
-            d = fastqc_stats.get(key) or gen_stats.get(key, {})
+        key = _find_best_sample_key(fastqc_stats, key_candidates)
+        if key:
+            d = fastqc_stats.get(key, {})
             v = (d.get("%GC") or d.get("fastqc-percent_gc"))
             if v:
                 try:
                     gc_pct = f"{float(v):.1f}%"
                 except Exception:
                     pass
-                break
+        if gc_pct == "N/A":
+            key = _find_best_sample_key(gen_stats, key_candidates)
+            if key:
+                d = gen_stats.get(key, {})
+                v = d.get("fastqc-percent_gc")
+                if v:
+                    try:
+                        gc_pct = f"{float(v):.1f}%"
+                    except Exception:
+                        pass
 
         # --- Q20 / Q30 ---
         q20, q30 = "N/A", "N/A"
-        for key in [sample_name, f"{prefix}_R1", prefix]:
+        key = _find_best_sample_key(quality_scores, key_candidates)
+        if key:
             qs = quality_scores.get(key)
             if qs:
                 q20 = f"{qs['q20_pct']:.2f}%"
                 q30 = f"{qs['q30_pct']:.2f}%"
-                break
 
         # --- mapping rate ---
         map_rate = "N/A"
         unique_rate = "N/A"
-        for key in [sample_name, prefix]:
+        key = _find_best_sample_key(star_stats, key_candidates)
+        if key:
             d = star_stats.get(key, {})
             if d.get("uniquely_mapped_percent"):
                 try:
@@ -312,15 +389,16 @@ def build_qc_table(config, output_dir):
                     map_rate = f"{float(mapped_pct):.2f}%"
                 except Exception:
                     pass
-                break
-            d = gen_stats.get(key, {})
-            if d.get("star-uniquely_mapped_percent"):
-                try:
-                    unique_rate = f"{float(d['star-uniquely_mapped_percent']):.2f}%"
-                    map_rate = unique_rate
-                except Exception:
-                    pass
-                break
+        if unique_rate == "N/A":
+            key = _find_best_sample_key(gen_stats, key_candidates)
+            if key:
+                d = gen_stats.get(key, {})
+                if d.get("star-uniquely_mapped_percent"):
+                    try:
+                        unique_rate = f"{float(d['star-uniquely_mapped_percent']):.2f}%"
+                        map_rate = unique_rate
+                    except Exception:
+                        pass
 
         rows.append({
             "sample": sample_name,
@@ -677,7 +755,6 @@ NAV_ITEMS = [
     ("lncrna",       "lncRNA 分析"),
     ("ercc",         "ERCC 分析"),
     ("deseq2",       "差异表达"),
-    ("software",     "软件版本"),
     ("file-index",   "结果文件"),
 ]
 
@@ -782,7 +859,6 @@ def build_html(config, output_dir, inline_images=True):
 
     # Collect data
     qc_rows = build_qc_table(config, output_dir)
-    sw_versions = collect_software_versions(output_dir)
     lncrna_plots = collect_lncrna_plots(output_dir) if deseq2_enabled else []
     ercc_results = collect_ercc_results(config, output_dir) if ercc_enabled else []
 
@@ -844,16 +920,6 @@ def build_html(config, output_dir, inline_images=True):
     sec1 += "</div>"
     sec1 += '<div class="subsection"><h3>关键参数</h3>'
     sec1 += param_grid(params_items)
-    sec1 += "</div>"
-    sec1 += '<div class="subsection"><h3>软件版本（MultiQC）</h3>'
-    if sw_versions:
-        sec1 += three_line_table(
-            ["软件名称", "版本号"],
-            sw_versions,
-            caption="表1-3  软件版本信息（由 MultiQC 收集）"
-        )
-    else:
-        sec1 += '<p class="placeholder">⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。</p>'
     sec1 += "</div>"
     sec1 += section_close()
 
@@ -1059,21 +1125,7 @@ def build_html(config, output_dir, inline_images=True):
 
     sec6 += section_close()
 
-    # ----- SECTION 7: Software Versions -----
-    sec7 = section_open("software", "软件版本", 7)
-    if sw_versions:
-        sec7 += '<div class="subsection"><h3>分析软件版本</h3>'
-        sec7 += three_line_table(
-            ["软件名称", "版本号"],
-            sw_versions,
-            caption="表7  本次分析使用的软件版本（由 MultiQC 收集）"
-        )
-        sec7 += "</div>"
-    else:
-        sec7 += '<p class="placeholder">⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。</p>'
-    sec7 += section_close()
-
-    # ----- SECTION 8: Output File Index -----
+    # ----- SECTION 7: Output File Index -----
     def fstatus(p):
         return "✅" if Path(p).is_file() else "❌"
 
@@ -1100,19 +1152,19 @@ def build_html(config, output_dir, inline_images=True):
                 (f"{output_dir}/results/{s}_mpc.txt", f"ERCC MPC 表 ({s})"),
             ]
 
-    sec8 = section_open("file-index", "结果文件索引", 8)
-    sec8 += '<ul class="file-index">'
+    sec7 = section_open("file-index", "结果文件索引", 7)
+    sec7 += '<ul class="file-index">'
     for fpath, desc in file_items:
         status = fstatus(fpath)
         rpath = fpath.replace(str(output_dir) + "/", "")
-        sec8 += (
+        sec7 += (
             f'<li>{status} '
             f'<span class="file-path">{rpath}</span>'
             f'<span class="file-desc">— {desc}</span>'
             f'</li>'
         )
-    sec8 += "</ul>"
-    sec8 += section_close()
+    sec7 += "</ul>"
+    sec7 += section_close()
 
     # ----- Assemble HTML -----
     html = f"""<!DOCTYPE html>
@@ -1148,7 +1200,6 @@ def build_html(config, output_dir, inline_images=True):
 {sec5}
 {sec6}
 {sec7}
-{sec8}
 </div>
 
 <div class="report-footer">
@@ -1192,7 +1243,6 @@ def build_markdown(config, output_dir):
     contrast_str = f"{contrast[0]}_vs_{contrast[1]}"
 
     qc_rows = build_qc_table(config, output_dir)
-    sw_versions = collect_software_versions(output_dir)
 
     lines = [
         f"# {title}",
@@ -1233,15 +1283,6 @@ def build_markdown(config, output_dir):
         f"| RSEM 定量 | {'✅ 启用' if use_rsem else '❌ 未启用（featureCounts）'} |",
         f"| ERCC 质控 | {'✅ 启用' if ercc_enabled else '❌ 未启用'} |",
         f"| DESeq2 分析 | {'✅ 启用' if deseq2_enabled else '❌ 未启用'} |",
-        "",
-        "### 1.3 软件版本（MultiQC）",
-        "",
-    ]
-    if sw_versions:
-        lines.append(md_table(["软件名称", "版本号"], sw_versions))
-    else:
-        lines.append("> ⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。")
-    lines += [
         "",
         "---",
         "",
@@ -1365,19 +1406,11 @@ def build_markdown(config, output_dir):
             lines.append(md_table(deseq2_h, deseq2_r[:10]))
             lines.append("")
 
-    # Section 7: Software versions
-    lines += ["---", "", "## 7. 软件版本", ""]
-    if sw_versions:
-        lines.append(md_table(["软件名称", "版本号"], sw_versions))
-    else:
-        lines += ["> ⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。"]
-    lines.append("")
-
-    # Section 8: File index
+    # Section 7: File index
     lines += [
         "---",
         "",
-        "## 8. 结果文件索引",
+        "## 7. 结果文件索引",
         "",
         "| 状态 | 文件路径 | 说明 |",
         "| --- | --- | --- |",
