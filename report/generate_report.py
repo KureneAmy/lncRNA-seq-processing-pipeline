@@ -212,13 +212,14 @@ def build_qc_table(config, output_dir):
         prefix = sample_info.get("prefix", sample_name)
 
         # --- raw reads ---
+        # multiqc_cutadapt.txt r_processed is an absolute count; divide by 1e6 for M.
+        # multiqc_general_stats.txt fastqc-total_sequences is already in millions.
         raw_reads = "N/A"
         for key in [sample_name, prefix, f"{prefix}_R1"]:
             d = cutadapt_stats.get(key, {})
             if d.get("r_processed"):
                 try:
-                    # The value in multiqc is in millions
-                    raw_reads = f"{float(d['r_processed']):.3f}M"
+                    raw_reads = f"{float(d['r_processed']) / 1e6:.3f}M"
                 except Exception:
                     pass
                 break
@@ -231,12 +232,13 @@ def build_qc_table(config, output_dir):
                 break
 
         # --- clean reads ---
+        # multiqc_cutadapt.txt r_written is an absolute count; divide by 1e6 for M.
         clean_reads = "N/A"
         for key in [sample_name, prefix]:
             d = cutadapt_stats.get(key, {})
             if d.get("r_written"):
                 try:
-                    clean_reads = f"{float(d['r_written']):.3f}M"
+                    clean_reads = f"{float(d['r_written']) / 1e6:.3f}M"
                 except Exception:
                     pass
                 break
@@ -350,6 +352,37 @@ def read_mpc_table(path):
     if path is None:
         return [], []
     return parse_tsv(path)
+
+
+# ---------------------------------------------------------------------------
+# Collect software versions
+# ---------------------------------------------------------------------------
+
+def collect_software_versions(output_dir):
+    """
+    Parse multiqc_software_versions.txt and return an ordered list of
+    (tool_name, version) tuples.  Falls back to an empty list if the file is
+    missing or malformed.
+    """
+    path = (Path(output_dir) / "results" / "multiqc_report_data"
+            / "multiqc_software_versions.txt")
+    content = safe_read(path)
+    if not content:
+        return []
+    lines = [l for l in content.splitlines() if l.strip()]
+    if len(lines) < 2:
+        return []
+    result = []
+    for line in lines[1:]:          # skip header row
+        parts = line.split("\t")
+        if not parts:
+            continue
+        tool = parts[0].strip()
+        if not tool:
+            continue
+        version = next((v.strip() for v in parts[1:] if v.strip()), "N/A")
+        result.append((tool, version))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +641,7 @@ NAV_ITEMS = [
     ("lncrna",       "lncRNA 分析"),
     ("ercc",         "ERCC 分析"),
     ("deseq2",       "差异表达"),
+    ("software",     "软件版本"),
     ("file-index",   "结果文件"),
 ]
 
@@ -978,7 +1012,22 @@ def build_html(config, output_dir, inline_images=True):
 
     sec6 += section_close()
 
-    # ----- SECTION 7: Output File Index -----
+    # ----- SECTION 7: Software Versions -----
+    sw_versions = collect_software_versions(output_dir)
+    sec7 = section_open("software", "软件版本", 7)
+    if sw_versions:
+        sec7 += '<div class="subsection"><h3>分析软件版本</h3>'
+        sec7 += three_line_table(
+            ["软件名称", "版本号"],
+            sw_versions,
+            caption="表7  本次分析使用的软件版本（由 MultiQC 收集）"
+        )
+        sec7 += "</div>"
+    else:
+        sec7 += '<p class="placeholder">⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。</p>'
+    sec7 += section_close()
+
+    # ----- SECTION 8: Output File Index -----
     def fstatus(p):
         return "✅" if Path(p).is_file() else "❌"
 
@@ -1005,19 +1054,19 @@ def build_html(config, output_dir, inline_images=True):
                 (f"{output_dir}/results/{s}_mpc.txt", f"ERCC MPC 表 ({s})"),
             ]
 
-    sec7 = section_open("file-index", "结果文件索引", 7)
-    sec7 += '<ul class="file-index">'
+    sec8 = section_open("file-index", "结果文件索引", 8)
+    sec8 += '<ul class="file-index">'
     for fpath, desc in file_items:
         status = fstatus(fpath)
         rpath = fpath.replace(str(output_dir) + "/", "")
-        sec7 += (
+        sec8 += (
             f'<li>{status} '
             f'<span class="file-path">{rpath}</span>'
             f'<span class="file-desc">— {desc}</span>'
             f'</li>'
         )
-    sec7 += "</ul>"
-    sec7 += section_close()
+    sec8 += "</ul>"
+    sec8 += section_close()
 
     # ----- Assemble HTML -----
     html = f"""<!DOCTYPE html>
@@ -1053,6 +1102,7 @@ def build_html(config, output_dir, inline_images=True):
 {sec5}
 {sec6}
 {sec7}
+{sec8}
 </div>
 
 <div class="report-footer">
@@ -1259,11 +1309,20 @@ def build_markdown(config, output_dir):
             lines.append(md_table(deseq2_h, deseq2_r[:10]))
             lines.append("")
 
-    # Section 7: File index
+    # Section 7: Software versions
+    sw_versions = collect_software_versions(output_dir)
+    lines += ["---", "", "## 7. 软件版本", ""]
+    if sw_versions:
+        lines.append(md_table(["软件名称", "版本号"], sw_versions))
+    else:
+        lines += ["> ⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。"]
+    lines.append("")
+
+    # Section 8: File index
     lines += [
         "---",
         "",
-        "## 7. 结果文件索引",
+        "## 8. 结果文件索引",
         "",
         "| 状态 | 文件路径 | 说明 |",
         "| --- | --- | --- |",
@@ -1337,7 +1396,7 @@ def main():
     print("Generating HTML report...")
     try:
         html_content = build_html(config, str(output_dir), inline_images=inline_images)
-        html_path = report_dir / "report.html"
+        html_path = report_dir / "lncRNA-seq_Analysis_report.html"
         html_path.write_text(html_content, encoding="utf-8")
         print(f"  ✅ HTML report: {html_path}")
     except Exception as e:
@@ -1348,7 +1407,7 @@ def main():
     print("Generating Markdown report...")
     try:
         md_content = build_markdown(config, str(output_dir))
-        md_path = report_dir / "report.md"
+        md_path = report_dir / "lncRNA-seq_Analysis_report.md"
         md_path.write_text(md_content, encoding="utf-8")
         print(f"  ✅ Markdown report: {md_path}")
     except Exception as e:

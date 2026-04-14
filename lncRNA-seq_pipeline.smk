@@ -120,8 +120,8 @@ def get_final_outputs(wildcards):
 
     # 报告输出
     if REPORT_ENABLE:
-        outputs.append(f"{OUTPUT_DIR}/report/report.html")
-        outputs.append(f"{OUTPUT_DIR}/report/report.md")
+        outputs.append(f"{OUTPUT_DIR}/report/lncRNA-seq_Analysis_report.html")
+        outputs.append(f"{OUTPUT_DIR}/report/lncRNA-seq_Analysis_report.md")
     
     return outputs
 
@@ -604,15 +604,20 @@ if REPORT_ENABLE:
             inputs["rsem_tpm"] = f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv"
         return inputs
 
-    # Absolute path to this script so the rule works regardless of working directory.
-    _REPORT_SCRIPT = str(Path(workflow.snakefile).parent / "report" / "generate_report.py")
+    # Script path: prefer config["report"]["script"] if provided, else auto-discover.
+    _script_from_config = config.get("report", {}).get("script", "")
+    _REPORT_SCRIPT = (
+        _script_from_config
+        if _script_from_config
+        else str(Path(workflow.snakefile).parent / "report" / "generate_report.py")
+    )
 
     rule generate_report:
         input:
             unpack(_report_inputs)
         output:
-            html = f"{OUTPUT_DIR}/report/report.html",
-            md   = f"{OUTPUT_DIR}/report/report.md",
+            html = f"{OUTPUT_DIR}/report/lncRNA-seq_Analysis_report.html",
+            md   = f"{OUTPUT_DIR}/report/lncRNA-seq_Analysis_report.md",
         params:
             script     = _REPORT_SCRIPT,
             output_dir = OUTPUT_DIR,

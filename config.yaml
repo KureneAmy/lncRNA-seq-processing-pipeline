@@ -169,6 +169,10 @@ report:
   # Set to false to skip report generation entirely.
   enable: true
 
+  # Absolute path to generate_report.py.
+  # Leave empty ("") to auto-discover relative to the Snakefile location.
+  script: ""
+
   # Report metadata (displayed in the report header).
   title: "lncRNA-seq Analysis Report"
   author: "EasyOmics Pipeline"
