@@ -169,7 +169,7 @@ report:
   # Set to false to skip report generation entirely.
   enable: true
   # absolute path to the report generation script (generate_report.py)
-  script: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Scripts/generate_report.py"
+  script: "report/generate_report.py"
   # Report metadata (displayed in the report header).
   title: "lncRNA-seq Analysis Report"
   author: "EasyOmics Pipeline"
@@ -178,4 +178,3 @@ report:
   # When true, images are embedded as base64 data URIs so the HTML file
   # can be opened offline without any external dependencies.
   inline_images: true
-

@@ -189,6 +189,39 @@ def parse_quality_scores(path):
 # QC table builder
 # ---------------------------------------------------------------------------
 
+def _sample_key_candidates(sample_name, prefix):
+    """Return likely MultiQC sample keys for one logical sample."""
+    candidates = []
+
+    def add(x):
+        if x and x not in candidates:
+            candidates.append(x)
+
+    for base in [sample_name, prefix]:
+        add(base)
+        add(f"{base}_R1")
+        add(f"{base}_R2")
+        add(f"{base}_val_1")
+        add(f"{base}_val_2")
+        add(f"{base}_trimmed")
+        add(base.replace("_Rep1", ""))
+        add(base.replace("_Rep2", ""))
+
+    return candidates
+
+
+def _find_best_sample_key(stats_dict, candidates):
+    """Find the best matching key from a MultiQC stats dict."""
+    for key in candidates:
+        if key in stats_dict:
+            return key
+    for key in candidates:
+        for existing in stats_dict:
+            if existing.startswith(key):
+                return existing
+    return None
+
+
 def build_qc_table(config, output_dir):
     """
     Build a list of dicts (one per sample) for the three-line QC table.
@@ -210,38 +243,41 @@ def build_qc_table(config, output_dir):
     for sample_name, sample_info in samples.items():
         condition = sample_info.get("condition", "N/A")
         prefix = sample_info.get("prefix", sample_name)
+        key_candidates = _sample_key_candidates(sample_name, prefix)
 
         # --- raw reads ---
         # multiqc_cutadapt.txt r_processed is an absolute count; divide by 1e6 for M.
         # multiqc_general_stats.txt fastqc-total_sequences is already in millions.
         raw_reads = "N/A"
-        for key in [sample_name, prefix, f"{prefix}_R1"]:
+        key = _find_best_sample_key(cutadapt_stats, key_candidates)
+        if key:
             d = cutadapt_stats.get(key, {})
             if d.get("r_processed"):
                 try:
                     raw_reads = f"{float(d['r_processed']) / 1e6:.3f}M"
                 except Exception:
                     pass
-                break
-            d = gen_stats.get(key, {})
-            if d.get("fastqc-total_sequences"):
-                try:
-                    raw_reads = f"{float(d['fastqc-total_sequences']):.3f}M"
-                except Exception:
-                    pass
-                break
+        if raw_reads == "N/A":
+            key = _find_best_sample_key(gen_stats, key_candidates)
+            if key:
+                d = gen_stats.get(key, {})
+                if d.get("fastqc-total_sequences"):
+                    try:
+                        raw_reads = f"{float(d['fastqc-total_sequences']):.3f}M"
+                    except Exception:
+                        pass
 
         # --- clean reads ---
         # multiqc_cutadapt.txt r_written is an absolute count; divide by 1e6 for M.
         clean_reads = "N/A"
-        for key in [sample_name, prefix]:
+        key = _find_best_sample_key(cutadapt_stats, key_candidates)
+        if key:
             d = cutadapt_stats.get(key, {})
             if d.get("r_written"):
                 try:
                     clean_reads = f"{float(d['r_written']) / 1e6:.3f}M"
                 except Exception:
                     pass
-                break
 
         # --- GC% ---
         gc_pct = "N/A"
@@ -746,6 +782,7 @@ def build_html(config, output_dir, inline_images=True):
 
     # Collect data
     qc_rows = build_qc_table(config, output_dir)
+    sw_versions = collect_software_versions(output_dir)
     lncrna_plots = collect_lncrna_plots(output_dir) if deseq2_enabled else []
     ercc_results = collect_ercc_results(config, output_dir) if ercc_enabled else []
 
@@ -807,6 +844,16 @@ def build_html(config, output_dir, inline_images=True):
     sec1 += "</div>"
     sec1 += '<div class="subsection"><h3>关键参数</h3>'
     sec1 += param_grid(params_items)
+    sec1 += "</div>"
+    sec1 += '<div class="subsection"><h3>软件版本（MultiQC）</h3>'
+    if sw_versions:
+        sec1 += three_line_table(
+            ["软件名称", "版本号"],
+            sw_versions,
+            caption="表1-3  软件版本信息（由 MultiQC 收集）"
+        )
+    else:
+        sec1 += '<p class="placeholder">⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。</p>'
     sec1 += "</div>"
     sec1 += section_close()
 
@@ -1013,7 +1060,6 @@ def build_html(config, output_dir, inline_images=True):
     sec6 += section_close()
 
     # ----- SECTION 7: Software Versions -----
-    sw_versions = collect_software_versions(output_dir)
     sec7 = section_open("software", "软件版本", 7)
     if sw_versions:
         sec7 += '<div class="subsection"><h3>分析软件版本</h3>'
@@ -1146,6 +1192,7 @@ def build_markdown(config, output_dir):
     contrast_str = f"{contrast[0]}_vs_{contrast[1]}"
 
     qc_rows = build_qc_table(config, output_dir)
+    sw_versions = collect_software_versions(output_dir)
 
     lines = [
         f"# {title}",
@@ -1186,6 +1233,15 @@ def build_markdown(config, output_dir):
         f"| RSEM 定量 | {'✅ 启用' if use_rsem else '❌ 未启用（featureCounts）'} |",
         f"| ERCC 质控 | {'✅ 启用' if ercc_enabled else '❌ 未启用'} |",
         f"| DESeq2 分析 | {'✅ 启用' if deseq2_enabled else '❌ 未启用'} |",
+        "",
+        "### 1.3 软件版本（MultiQC）",
+        "",
+    ]
+    if sw_versions:
+        lines.append(md_table(["软件名称", "版本号"], sw_versions))
+    else:
+        lines.append("> ⚠ 软件版本信息未找到（multiqc_software_versions.txt 不存在或为空）。")
+    lines += [
         "",
         "---",
         "",
@@ -1310,7 +1366,6 @@ def build_markdown(config, output_dir):
             lines.append("")
 
     # Section 7: Software versions
-    sw_versions = collect_software_versions(output_dir)
     lines += ["---", "", "## 7. 软件版本", ""]
     if sw_versions:
         lines.append(md_table(["软件名称", "版本号"], sw_versions))

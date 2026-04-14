@@ -525,8 +525,8 @@ The pipeline automatically produces an HTML report and a Markdown report at the 
 ## Report output location
 
 ```
-<output_dir>/report/report.html   # Offline-ready HTML (images embedded as Base64)
-<output_dir>/report/report.md     # Markdown version (images as file paths)
+<output_dir>/report/lncRNA-seq_Analysis_report.html   # Offline-ready HTML (images embedded as Base64)
+<output_dir>/report/lncRNA-seq_Analysis_report.md     # Markdown version (images as file paths)
 ```
 
 ## Report configuration (`config.yaml`)
@@ -534,6 +534,7 @@ The pipeline automatically produces an HTML report and a Markdown report at the 
 ```yaml
 report:
   enable: true                          # Set to false to skip report generation
+  script: "report/generate_report.py"   # Optional override path to report generator script
   title: "lncRNA-seq Analysis Report"   # Report title
   author: "Your Name"                   # Analyst name shown in the header
   project: "My Project"                 # Project name shown in the header
