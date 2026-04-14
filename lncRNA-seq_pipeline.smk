@@ -12,18 +12,22 @@ DESEQ2 = bool(config["analysis"].get("deseq2", True))
 SAMPLES = list(config["samples"].keys())
 CONTRAST = config["analysis"]["contrast"]
 OUTPUT_DIR = config["output_dir"]
-RSEM_GRP = config["ref"].get("rsem_grp")
+USE_RSEM = config["analysis"].get("use_rsem", False)
+if USE_RSEM:
+    RSEM_GRP = config["ref"].get("rsem_grp")
+    RSEM_REF_NAME = str(RSEM_GRP)[:-4]
+    if not RSEM_GRP:
+        raise ValueError("Missing required config: ref.rsem_grp (absolute path to .grp file)")
+    if not os.path.isabs(str(RSEM_GRP)):
+        raise ValueError(f"ref.rsem_grp must be an absolute path, got: {RSEM_GRP}")
+    if not str(RSEM_GRP).endswith(".grp"):
+        raise ValueError(f"ref.rsem_grp must be an absolute path ending with '.grp', got: {RSEM_GRP}")
+else:
+    RSEM_GRP = None
 
-if not RSEM_GRP:
-    raise ValueError("Missing required config: ref.rsem_grp (absolute path to .grp file)")
 
-if not os.path.isabs(str(RSEM_GRP)):
-    raise ValueError(f"ref.rsem_grp must be an absolute path, got: {RSEM_GRP}")
 
-if not str(RSEM_GRP).endswith(".grp"):
-    raise ValueError(f"ref.rsem_grp must be an absolute path ending with '.grp', got: {RSEM_GRP}")
 
-RSEM_REF_NAME = str(RSEM_GRP)[:-4]
 
 # ===== 样本分类 =====
 PAIRED_SAMPLES = [s for s in SAMPLES if config["samples"][s].get("R2")]
@@ -86,9 +90,10 @@ def get_final_outputs(wildcards):
     ])
     
     # 定量输出
-    outputs.extend([
-        f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{sample}.genes.results" for sample in SAMPLES
-    ])
+    if USE_RSEM:
+        outputs.extend([
+            f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{sample}.genes.results" for sample in SAMPLES
+        ])
     
     # DEA 和 GO 分析输出
     outputs.extend([
@@ -97,7 +102,6 @@ def get_final_outputs(wildcards):
         f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.GO_enrichment.csv",
         f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.GO_dotplot.png",
         f"{OUTPUT_DIR}/results/featureCounts.gene_counts.symbol.tsv",
-        f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv",
         f"{OUTPUT_DIR}/results/multiqc_report.html",
     ])
     
@@ -196,9 +200,6 @@ rule bowtie2_remove_rrna_paired:
             --un-conc-gz {params.prefix}unmapped.fastq.gz \
             -S /dev/null \
             > {log} 2>&1
-
-        mv {params.prefix}unmapped.fastq.1.gz {output.r1}
-        mv {params.prefix}unmapped.fastq.2.gz {output.r2}
         """
 
 # ===== 单端 QC 规则 =====
@@ -272,8 +273,6 @@ rule bowtie2_remove_rrna_single:
             --un-gz {params.prefix}unmapped.fastq.gz \
             -S /dev/null \
             > {log} 2>&1
-
-        mv {params.prefix}unmapped.fastq.gz {output.r1}
         """
 
 # ===== 对齐规则（配对端）=====
@@ -408,25 +407,28 @@ rule format_featurecounts:
         """
 
 # ===== RSEM 定量 =====
-rule rsem_calculate_expression:
-    input:
-        bam=f"{OUTPUT_DIR}/intermediate/align/transcript_bam/{{sample}}.Aligned.toTranscriptome.out.bam",
-        ref_done=RSEM_GRP,
-    output:
-        f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}.genes.results"
-    params:
-        ref_name=RSEM_REF_NAME,
-        prefix=f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}",
-        is_paired=lambda w: "--paired-end" if is_paired_end(w) else ""
-    threads: config["threads"]
-    container: config["container"]
-    log:
-        f"{OUTPUT_DIR}/logs/rsem/{{sample}}.log"
-    shell:
-        """
-        mkdir -p {OUTPUT_DIR}/intermediate/align/rsem_temp
-        rsem-calculate-expression --bam {params.is_paired} -p {threads} {input.bam} {params.ref_name} {params.prefix} > {log} 2>&1
-        """
+if USE_RSEM:
+    rule rsem_calculate_expression:
+        input:
+            bam=f"{OUTPUT_DIR}/intermediate/align/transcript_bam/{{sample}}.Aligned.toTranscriptome.out.bam",
+            ref_done=RSEM_GRP,
+        output:
+            f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}.genes.results"
+        params:
+            ref_name=RSEM_REF_NAME,
+            prefix=f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}",
+            is_paired=lambda w: "--paired-end" if is_paired_end(w) else ""
+        threads: config["threads"]
+        container: config["container"]
+        log:
+            f"{OUTPUT_DIR}/logs/rsem/{{sample}}.log"
+        benchmark:
+            f"{OUTPUT_DIR}/logs/rsem/{{sample}}.benchmark.txt"
+        shell:
+            """
+            mkdir -p {OUTPUT_DIR}/intermediate/align/rsem_temp
+            rsem-calculate-expression --bam {params.is_paired} -p {threads} {input.bam} {params.ref_name} {params.prefix} > {log} 2>&1
+            """
 
 # ===== ERCC 分析（可选）=====
 if ERCC:
@@ -490,35 +492,47 @@ rule RNA_downstream_analysis:
     input:
         config="config.yaml",
         counts_file=f"{OUTPUT_DIR}/intermediate/featureCounts.raw_counts.tsv",
-        rsem_files=expand(f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}.genes.results", sample=SAMPLES)
+        rsem_files=expand(f"{OUTPUT_DIR}/intermediate/align/rsem_temp/{{sample}}.genes.results", sample=SAMPLES) if USE_RSEM else []
     output:
         results=f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.deseq2_results.csv",
         plot=f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.volcano_plot.png",
         go_csv=f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.GO_enrichment.csv",
         go_plot=f"{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}.GO_dotplot.png",
         counts_matrix=f"{OUTPUT_DIR}/results/featureCounts.gene_counts.symbol.tsv",
-        tpm_matrix=f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv"
     params:
         script=config["scripts"]["rna_analysis"],
         mode="align",
         contrast=f"{CONTRAST[0]},{CONTRAST[1]}",
-        rsem_files_str=lambda w, input: ",".join(input.rsem_files)
+        use_rsem=USE_RSEM,
+        rsem_files_str=lambda w, input: ",".join(input.rsem_files) if input.rsem_files else "",
+        tpm_matrix=f"{OUTPUT_DIR}/results/RSEM.gene_tpm.symbol.tsv" if USE_RSEM else None,
     log:
         f"{OUTPUT_DIR}/logs/{CONTRAST[0]}_vs_{CONTRAST[1]}_RNA.log"
     container: config["container"]
     shell:
         """
         mkdir -p {OUTPUT_DIR}/results {OUTPUT_DIR}/logs
-        Rscript {params.script} \
-            --mode {params.mode} \
-            --config {input.config} \
-            --input_counts {input.counts_file} \
-            --input_rsem_files "{params.rsem_files_str}" \
-            --contrast {params.contrast} \
-            --output_prefix "{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}" \
-            --output_counts_matrix "{output.counts_matrix}" \
-            --output_tpm_matrix "{output.tpm_matrix}" \
-            2> {log}
+        if [ "{params.use_rsem}" = "True" ]; then
+            Rscript {params.script} \
+                --mode {params.mode} \
+                --config {input.config} \
+                --input_counts {input.counts_file} \
+                --input_rsem_files "{params.rsem_files_str}" \
+                --contrast {params.contrast} \
+                --output_prefix "{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}" \
+                --output_counts_matrix "{output.counts_matrix}" \
+                --output_tpm_matrix "{params.tpm_matrix}" \
+                2> {log}
+        else
+            Rscript {params.script} \
+                --mode {params.mode} \
+                --config {input.config} \
+                --input_counts {input.counts_file} \
+                --contrast {params.contrast} \
+                --output_prefix "{OUTPUT_DIR}/results/{CONTRAST[0]}_vs_{CONTRAST[1]}" \
+                --output_counts_matrix "{output.counts_matrix}" \
+                2> {log}
+        fi
         """
 if DESEQ2:
     rule lncRNA_downstream_analysis:
