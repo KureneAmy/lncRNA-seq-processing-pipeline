@@ -248,7 +248,15 @@ def parse_quality_scores_from_multiqc_json(multiqc_json):
 # QC table builder
 # ---------------------------------------------------------------------------
 
-def _sample_key_candidates(sample_name, prefix):
+def _strip_fastq_suffix(path_or_name):
+    name = Path(path_or_name).name
+    for sfx in [".fastq.gz", ".fq.gz", ".fastq", ".fq"]:
+        if name.endswith(sfx):
+            return name[:-len(sfx)]
+    return Path(name).stem
+
+
+def _sample_key_candidates(sample_name, prefix, sample_info=None):
     """Return likely MultiQC sample keys for one logical sample."""
     candidates = []
 
@@ -256,29 +264,86 @@ def _sample_key_candidates(sample_name, prefix):
         if x and x not in candidates:
             candidates.append(x)
 
-    for base in [sample_name, prefix]:
+    read1 = (sample_info or {}).get("R1")
+    file_stem = _strip_fastq_suffix(read1) if read1 else None
+
+    for base in [sample_name, prefix, file_stem,
+                 f"{file_stem}_{prefix}" if file_stem and prefix else None]:
+        if not base:
+            continue
         add(base)
         add(f"{base}_R1")
         add(f"{base}_R2")
         add(f"{base}_val_1")
         add(f"{base}_val_2")
         add(f"{base}_trimmed")
+        add(f"{base}.unique")
         add(base.replace("_Rep1", ""))
         add(base.replace("_Rep2", ""))
 
     return candidates
 
 
+def _normalize_mqc_key(key):
+    if not key:
+        return ""
+    s = str(key).strip().lower()
+    for suffix in [".unique", "_r1", "_r2", "_val_1", "_val_2", "_trimmed"]:
+        if s.endswith(suffix):
+            s = s[:-len(suffix)]
+    return s
+
+
 def _find_best_sample_key(stats_dict, candidates):
     """Find the best matching key from a MultiQC stats dict."""
+    if not isinstance(stats_dict, dict) or not stats_dict:
+        return None
+
+    # 1) strict exact match (ordered candidates)
     for key in candidates:
         if key in stats_dict:
             return key
+
+    # 2) case-insensitive exact match
+    existing_by_lc = {str(k).lower(): k for k in stats_dict}
     for key in candidates:
-        for existing in stats_dict:
-            if existing.startswith(key):
-                return existing
+        k = existing_by_lc.get(str(key).lower())
+        if k:
+            return k
+
+    # 3) normalized exact match to merge key variants
+    norm_existing = {}
+    for existing in stats_dict:
+        norm_existing.setdefault(_normalize_mqc_key(existing), []).append(existing)
+    for key in candidates:
+        nk = _normalize_mqc_key(key)
+        if nk in norm_existing:
+            # prefer deterministic shortest key when several aliases point to same sample
+            return sorted(norm_existing[nk], key=lambda x: (len(str(x)), str(x)))[0]
     return None
+
+
+def _find_key_from_data_sources(source_map, sample_info, candidates):
+    """
+    Try to resolve a MultiQC sample key from report_data_sources paths using
+    config sample file hints (R1 basename), then candidate names.
+    """
+    if not isinstance(source_map, dict) or not source_map:
+        return None
+
+    read1 = (sample_info or {}).get("R1")
+    stem = _strip_fastq_suffix(read1) if read1 else None
+    stem_lc = stem.lower() if stem else None
+
+    # Prefer source paths containing the original FASTQ basename.
+    if stem_lc:
+        for key, src in source_map.items():
+            src_lc = str(src).lower()
+            if stem_lc in src_lc:
+                return key
+
+    # Fallback: resolve by candidate key matching.
+    return _find_best_sample_key(source_map, candidates)
 
 
 def build_qc_table(config, output_dir):
@@ -292,6 +357,7 @@ def build_qc_table(config, output_dir):
 
     multiqc_json = load_multiqc_json(multiqc_dir / "multiqc_data.json")
     raw_data = multiqc_json.get("report_saved_raw_data", {})
+    data_sources = multiqc_json.get("report_data_sources", {})
 
     gen_stats = raw_data.get("multiqc_general_stats", {}) or load_multiqc_table(
         multiqc_dir / "multiqc_general_stats.txt")
@@ -304,18 +370,25 @@ def build_qc_table(config, output_dir):
     quality_scores = (parse_quality_scores_from_multiqc_json(multiqc_json)
                       or parse_quality_scores(multiqc_dir / "fastqc_per_sequence_quality_scores_plot.txt"))
 
+    cutadapt_sources = data_sources.get("Cutadapt", {}).get("all_sections", {})
+    fastqc_sources = data_sources.get("FastQC", {}).get("all_sections", {})
+    star_sources = data_sources.get("STAR", {}).get("SummaryLog", {})
+    general_sources = data_sources.get("Snippy", {}).get("snippy", {})
+
     samples = config["samples"]
     rows = []
     for sample_name, sample_info in samples.items():
         condition = sample_info.get("condition", "N/A")
         prefix = sample_info.get("prefix", sample_name)
-        key_candidates = _sample_key_candidates(sample_name, prefix)
+        key_candidates = _sample_key_candidates(sample_name, prefix, sample_info)
 
         # --- raw reads ---
         # multiqc_cutadapt.txt r_processed is an absolute count; divide by 1e6 for M.
         # multiqc_general_stats.txt fastqc-total_sequences is already in millions.
         raw_reads = "N/A"
-        key = _find_best_sample_key(cutadapt_stats, key_candidates)
+        key = _find_key_from_data_sources(cutadapt_sources, sample_info, key_candidates)
+        if key not in cutadapt_stats:
+            key = _find_best_sample_key(cutadapt_stats, key_candidates)
         if key:
             d = cutadapt_stats.get(key, {})
             if d.get("r_processed"):
@@ -324,7 +397,9 @@ def build_qc_table(config, output_dir):
                 except Exception:
                     pass
         if raw_reads == "N/A":
-            key = _find_best_sample_key(gen_stats, key_candidates)
+            key = _find_key_from_data_sources(general_sources, sample_info, key_candidates)
+            if key not in gen_stats:
+                key = _find_best_sample_key(gen_stats, key_candidates)
             if key:
                 d = gen_stats.get(key, {})
                 if d.get("fastqc-total_sequences"):
@@ -336,7 +411,9 @@ def build_qc_table(config, output_dir):
         # --- clean reads ---
         # multiqc_cutadapt.txt r_written is an absolute count; divide by 1e6 for M.
         clean_reads = "N/A"
-        key = _find_best_sample_key(cutadapt_stats, key_candidates)
+        key = _find_key_from_data_sources(cutadapt_sources, sample_info, key_candidates)
+        if key not in cutadapt_stats:
+            key = _find_best_sample_key(cutadapt_stats, key_candidates)
         if key:
             d = cutadapt_stats.get(key, {})
             if d.get("r_written"):
@@ -347,7 +424,9 @@ def build_qc_table(config, output_dir):
 
         # --- GC% ---
         gc_pct = "N/A"
-        key = _find_best_sample_key(fastqc_stats, key_candidates)
+        key = _find_key_from_data_sources(fastqc_sources, sample_info, key_candidates)
+        if key not in fastqc_stats:
+            key = _find_best_sample_key(fastqc_stats, key_candidates)
         if key:
             d = fastqc_stats.get(key, {})
             v = (d.get("%GC") or d.get("fastqc-percent_gc"))
@@ -357,7 +436,9 @@ def build_qc_table(config, output_dir):
                 except Exception:
                     pass
         if gc_pct == "N/A":
-            key = _find_best_sample_key(gen_stats, key_candidates)
+            key = _find_key_from_data_sources(general_sources, sample_info, key_candidates)
+            if key not in gen_stats:
+                key = _find_best_sample_key(gen_stats, key_candidates)
             if key:
                 d = gen_stats.get(key, {})
                 v = d.get("fastqc-percent_gc")
@@ -379,7 +460,9 @@ def build_qc_table(config, output_dir):
         # --- mapping rate ---
         map_rate = "N/A"
         unique_rate = "N/A"
-        key = _find_best_sample_key(star_stats, key_candidates)
+        key = _find_key_from_data_sources(star_sources, sample_info, key_candidates)
+        if key not in star_stats:
+            key = _find_best_sample_key(star_stats, key_candidates)
         if key:
             d = star_stats.get(key, {})
             if d.get("uniquely_mapped_percent"):
@@ -390,7 +473,9 @@ def build_qc_table(config, output_dir):
                 except Exception:
                     pass
         if unique_rate == "N/A":
-            key = _find_best_sample_key(gen_stats, key_candidates)
+            key = _find_key_from_data_sources(general_sources, sample_info, key_candidates)
+            if key not in gen_stats:
+                key = _find_best_sample_key(gen_stats, key_candidates)
             if key:
                 d = gen_stats.get(key, {})
                 if d.get("star-uniquely_mapped_percent"):
