@@ -183,6 +183,8 @@ This workflow is compatible with both single-end and paired-end sequencing data 
           ├── config.yaml
           ├── data
           │   ├── reference
+          │   │   ├── ercc (optional)
+          │   │   ├── indices
           │   │   ├── genome.fa
           │   │   └── annotation.gtf
           │   └── samples
@@ -257,32 +259,37 @@ This workflow is compatible with both single-end and paired-end sequencing data 
         # and will be used in differential expression analysis
         samples:
           SRR7685881_control_Rep2:
-            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685881_control_Rep2.fastq.gz"
+            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685881.fastq.gz"
+            prefix: "control_Rep2"
             condition: "Control"
-
+          
           SRR7685880_control_Rep1:
-            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685880_control_Rep1.fastq.gz"
+            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685880.fastq.gz"
+            prefix: "control_Rep1"
             condition: "Control"
-
+            
           SRR7685879_treated_Rep2:
-            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685879_treated_Rep2.fastq.gz"
+            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685879.fastq.gz"
+            prefix: "treated_Rep2"
             condition: "Treated"
-
+        
           SRR7685878_treated_Rep1:
-            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/data/SRR7685878_treated_Rep1.fastq.gz"
+            R1: "/mnt1/4.NAS2025/zhangam/easyomics_test/report/lncRNA/Test_Files/SRR7685878.fastq.gz"
+            prefix: "treated_Rep1"
             condition: "Treated"
 
-        # Remember to keep the file name same with the sample name.
         # Example for single-end data:
         #  Sample_SE:
-        #    R1: "/path/to/data/Sample_SE.fastq.gz"
+        #    R1: "/path/to/data/Sample_SE_data.fastq.gz"
+        #    prefix: "expr1"
         #    condition: "Control"/...
         #
         # Example for paired-end data:
         #  Sample_PE:
-        #    R1: "/path/to/data/Sample_PE_R1.fastq.gz"
-        #    R2: "/path/to/data/Sample_PE_R2.fastq.gz"
-        #    condition: "Control"/...
+        #    R1: "/path/to/data/Sample_PE_data_R1.fastq.gz"
+        #    R2: "/path/to/data/Sample_PE_data_R2.fastq.gz"
+        #    prefix: "expr2"
+        #    condition: "Control"/... 
 
         # --- 4. Reference Files ---
         # All paths should be ABSOLUTE paths
@@ -301,10 +308,10 @@ This workflow is compatible with both single-end and paired-end sequencing data 
           # STAR genome index
           star_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/star_genome_index"
 
-          # RSEM reference prefix
-          # This should be the directory containing the RSEM reference files
-          # The actual reference name should be 'rsem_ref'
-          rsem_index: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/ref/rsem_index"
+          # RSEM grp file (ABSOLUTE path) (optional)
+          # The pipeline will infer RSEM reference name by removing the '.grp' suffix.
+          # Example: '/path/to/rsem_ref.grp' -> ref name '/path/to/rsem_ref'
+          rsem_grp: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/References/rsem_index/rsem_ref.grp"
 
         # --- 5. Analysis Parameters ---
         # Number of CPU threads to use for parallel processing
@@ -325,6 +332,12 @@ This workflow is compatible with both single-end and paired-end sequencing data 
 
         # --- 6. Differential Expression Analysis Settings ---
         analysis:
+
+          # Whether to perform RSEM quantification
+          # If true, RSEM will be used for quantification and tpm matrix will be generated. Please make sure the RSEM reference is properly prepared and the path is correctly specified in the Reference Files section.
+          # If false, featureCounts will be used for quantification.
+          use_rsem: false
+        
           # Contrast for differential expression analysis
           # Format: [treatment_group, control_group]
           # The first group will be compared against the second (control)
@@ -354,6 +367,22 @@ This workflow is compatible with both single-end and paired-end sequencing data 
           # If you don't have at least 2 replicated samples for each group, deseq2 should be set to false.
           # If replicated samples are available, you can set to true to perform DESeq2 and GSEA analyses, etc.
           deseq2: true
+
+        # --- 7. Report Settings ---
+        # Controls the automatic HTML + Markdown report generated at the end of the pipeline.
+        report:
+          # Set to false to skip report generation entirely.
+          enable: true
+          # absolute path to the report generation script (generate_report.py)
+          script: "/mnt1/4.NAS2025/zhangam/easyomics_test/lncRNA-seq/Scripts/generate_report.py"
+          # Report metadata (displayed in the report header).
+          title: "lncRNA-seq Analysis Report"
+          author: "EasyOmics Pipeline"
+          project: "lncRNA-seq Project"
+        
+          # When true, images are embedded as base64 data URIs so the HTML file
+          # can be opened offline without any external dependencies.
+          inline_images: true
         ```
 
       * **Step 2: Dry-run and dag-make**
